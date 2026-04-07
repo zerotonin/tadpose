@@ -1,438 +1,500 @@
-from sqlalchemy import create_engine, Column, Integer, Float, String, ForeignKey, DateTime, Table, Boolean
-from sqlalchemy.orm import sessionmaker, relationship, declarative_base
-from sqlalchemy.dialects.mysql import LONGTEXT
-from sqlalchemy.dialects.mysql import TEXT
-import os
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — database                                              ║
+# ║  « relational schema for 10^7 tadpole observations »             ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  SQLAlchemy ORM models for the tadpole behavioural database.     ║
+# ║  Schema mirrors the experimental hierarchy:                      ║
+# ║                                                                  ║
+# ║    ExperimentType → ExperimentSeries → Video → Trial             ║
+# ║                                        ↑        ↓                ║
+# ║    Frog → TadpoleGroup ────────────────┘   TimeSeries            ║
+# ║                                             ↓  ↓  ↓              ║
+# ║                              Trajectory  Posture  Velocity       ║
+# ║                                             ↓                    ║
+# ║                                         Clustering               ║
+# ║                                                                  ║
+# ║  Rewritten from TadpoleDatabase.py                               ║
+# ║                                                                  ║
+# ║  Bugs fixed                                                      ║
+# ║  ──────────                                                      ║
+# ║  • find_experimentseries_by_attributes() referenced              ║
+# ║    fly_attribute_{i} — copy-paste from FlyChoiceDatabase.        ║
+# ║    Now queries the many-to-many attributes relationship.         ║
+# ║  • Trial had duplicate tadpole_group relationship definition.    ║
+# ║  • MySQL dialect imports (LONGTEXT, TEXT) used with SQLite       ║
+# ║    → replaced with sqlalchemy.Text.                              ║
+# ║  • Docstrings referenced "fly", "genotype", "is_female".         ║
+# ║  • WellTypeAttributes docstring referenced "stimuli"/"Well".     ║
+# ╚══════════════════════════════════════════════════════════════════╝
 
-Base = declarative_base()
+from __future__ import annotations
 
-experiment_type_attributes_association = Table('experiment_attributes_association', Base.metadata,
-   Column('experiment_type_id', Integer, ForeignKey('experiment_type.experiment_type_id'), primary_key=True),
-   Column('attribute_id', Integer, ForeignKey('experiment_type_attribute.experiment_type_attribute_id'), primary_key=True))
+from pathlib import Path
+from typing import Any, Optional
 
-well_type_attributes_association = Table('well_attributes_association', Base.metadata,
-Column('well_type_id', Integer, ForeignKey('well_type.well_type_id'), primary_key=True),
-Column('attribute_id', Integer, ForeignKey('well_type_attribute.well_type_attribute_id'), primary_key=True)
+from sqlalchemy import (
+    Column, DateTime, Float, ForeignKey, Integer, String, Table, Text,
+    and_, create_engine,
+)
+from sqlalchemy.orm import (
+    DeclarativeBase, Session, relationship, sessionmaker,
 )
 
 
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Declarative base  « all models inherit from this »           │
+# └──────────────────────────────────────────────────────────────┘
+
+class Base(DeclarativeBase):
+    pass
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Association tables  « many-to-many links »                   │
+# └──────────────────────────────────────────────────────────────┘
+
+experiment_type_attributes_assoc = Table(
+    "experiment_attributes_association", Base.metadata,
+    Column("experiment_type_id", Integer,
+           ForeignKey("experiment_type.experiment_type_id"),
+           primary_key=True),
+    Column("attribute_id", Integer,
+           ForeignKey("experiment_type_attribute.experiment_type_attribute_id"),
+           primary_key=True),
+)
+
+well_type_attributes_assoc = Table(
+    "well_attributes_association", Base.metadata,
+    Column("well_type_id", Integer,
+           ForeignKey("well_type.well_type_id"),
+           primary_key=True),
+    Column("attribute_id", Integer,
+           ForeignKey("well_type_attribute.well_type_attribute_id"),
+           primary_key=True),
+)
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Experiment metadata  « what, who, when »                     │
+# └──────────────────────────────────────────────────────────────┘
 
 class ExperimentType(Base):
-    __tablename__ = 'experiment_type'
+    """Protocol definition (e.g. '4-AP dose-response', 'PTZ titration')."""
+    __tablename__ = "experiment_type"
+
     experiment_type_id = Column(Integer, primary_key=True)
-    protocol = Column(TEXT)
+    protocol = Column(Text)
     long_name = Column(String(255))
     short_name = Column(String(255))
-    experiment_attribute_1 = Column(Integer, ForeignKey('experiment_type_attribute.experiment_type_attribute_id'), nullable=True)
-    experiment_attribute_2 = Column(Integer, ForeignKey('experiment_type_attribute.experiment_type_attribute_id'), nullable=True)
-    experiment_attribute_3 = Column(Integer, ForeignKey('experiment_type_attribute.experiment_type_attribute_id'), nullable=True)
-    experiment_attribute_4 = Column(Integer, ForeignKey('experiment_type_attribute.experiment_type_attribute_id'), nullable=True)
-    experiment_attribute_5 = Column(Integer, ForeignKey('experiment_type_attribute.experiment_type_attribute_id'), nullable=True)
-    # ... potentially more attributes (attribute_0, attribute_1, ...)
 
-    # Relationships
-    attributes = relationship("ExperimentTypeAttributes", secondary=experiment_type_attributes_association, back_populates="experiment_types")
+    # Legacy per-row attribute slots (kept for backward compat)
+    experiment_attribute_1 = Column(Integer, ForeignKey("experiment_type_attribute.experiment_type_attribute_id"), nullable=True)
+    experiment_attribute_2 = Column(Integer, ForeignKey("experiment_type_attribute.experiment_type_attribute_id"), nullable=True)
+    experiment_attribute_3 = Column(Integer, ForeignKey("experiment_type_attribute.experiment_type_attribute_id"), nullable=True)
+    experiment_attribute_4 = Column(Integer, ForeignKey("experiment_type_attribute.experiment_type_attribute_id"), nullable=True)
+    experiment_attribute_5 = Column(Integer, ForeignKey("experiment_type_attribute.experiment_type_attribute_id"), nullable=True)
+
+    attributes = relationship(
+        "ExperimentTypeAttribute",
+        secondary=experiment_type_attributes_assoc,
+        back_populates="experiment_types",
+    )
     experiment_series = relationship("ExperimentSeries", back_populates="experiment_type")
-    
-    
-class ExperimentTypeAttributes(Base):
-    __tablename__ = 'experiment_type_attribute'
+
+
+class ExperimentTypeAttribute(Base):
+    """Free-form tag that can be attached to an ExperimentType."""
+    __tablename__ = "experiment_type_attribute"
+
     experiment_type_attribute_id = Column(Integer, primary_key=True)
-    name = Column(String)
-    # Relationship back to Arena
-    experiment_types = relationship("ExperimentType", secondary=experiment_type_attributes_association, back_populates="attributes")
+    name = Column(String(255))
+
+    experiment_types = relationship(
+        "ExperimentType",
+        secondary=experiment_type_attributes_assoc,
+        back_populates="attributes",
+    )
 
 
 class Investigator(Base):
-    __tablename__ = 'investigator'
+    """Researcher who conducted the experiment."""
+    __tablename__ = "investigator"
 
     investigator_id = Column(Integer, primary_key=True)
     first_name = Column(String(255))
     last_name = Column(String(255))
 
-    # Relationships
     experiment_series = relationship("ExperimentSeries", back_populates="investigator")
 
 
-
 class ExperimentSeries(Base):
-    __tablename__ = 'experiment_series'
+    """A single session: one type, one investigator, one date."""
+    __tablename__ = "experiment_series"
 
     series_id = Column(Integer, primary_key=True)
-    experiment_type_id = Column(Integer, ForeignKey('experiment_type.experiment_type_id'))
-    investigator_id = Column(Integer, ForeignKey('investigator.investigator_id'))
+    experiment_type_id = Column(Integer, ForeignKey("experiment_type.experiment_type_id"))
+    investigator_id = Column(Integer, ForeignKey("investigator.investigator_id"))
     experiment_date = Column(DateTime)
 
-    # Relationships
     experiment_type = relationship("ExperimentType", back_populates="experiment_series")
     investigator = relationship("Investigator", back_populates="experiment_series")
     videos = relationship("Video", back_populates="experiment_series")
 
 
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Animals  « frogs and their offspring »                       │
+# └──────────────────────────────────────────────────────────────┘
+
 class Frog(Base):
-    __tablename__ = 'frog'
+    """Parent female used for breeding."""
+    __tablename__ = "frog"
+
     frog_id = Column(Integer, primary_key=True)
     female_tank = Column(Integer)
     female_identifier = Column(String(255))
     background_strain = Column(String(255))
-    # Relationships
+
     tadpole_groups = relationship("TadpoleGroup", back_populates="mother")
 
+
 class TadpoleGroup(Base):
-    __tablename__ = 'tadpole_group'
+    """Clutch of tadpoles from a single fertilisation event."""
+    __tablename__ = "tadpole_group"
+
     tadpole_group_id = Column(Integer, primary_key=True)
-    mother_id = Column(Integer, ForeignKey('frog.frog_id'))
+    mother_id = Column(Integer, ForeignKey("frog.frog_id"))
     fertilisation_date = Column(DateTime)
     development_stage = Column(Integer)
     seq_folder = Column(String(255))
     transgene = Column(String(255))
-    # Relationships
+
     mother = relationship("Frog", back_populates="tadpole_groups")
     trials = relationship("Trial", back_populates="tadpole_group")
 
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Recording  « videos and per-well trials »                    │
+# └──────────────────────────────────────────────────────────────┘
+
 class Video(Base):
-    __tablename__ = 'video'
-    #automatic
+    """One video file from a Raspberry Pi camera session."""
+    __tablename__ = "video"
+
     video_id = Column(Integer, primary_key=True)
-    series_id = Column(Integer, ForeignKey('experiment_series.series_id'))
+    series_id = Column(Integer, ForeignKey("experiment_series.series_id"))
     pix2mm = Column(Float)
-    # user
     filename = Column(String(255))
     camera = Column(String(255))
     video_series_num = Column(Integer)
     video_series_size = Column(Integer)
-    # cv2 
     fps = Column(Float)
     date_time = Column(DateTime)
 
-    # Relationships
     experiment_series = relationship("ExperimentSeries", back_populates="videos")
     trials = relationship("Trial", back_populates="video")
 
 
 class Trial(Base):
-    __tablename__ = 'trial'
+    """One tadpole in one well in one video."""
+    __tablename__ = "trial"
 
     trial_id = Column(Integer, primary_key=True)
-    video_id = Column(Integer, ForeignKey('video.video_id'))
+    video_id = Column(Integer, ForeignKey("video.video_id"))
     well_number = Column(Integer)
-    well_type_id= Column(Integer, ForeignKey('well_type.well_type_id'))
-    tadpole_group_id = Column(Integer, ForeignKey('tadpole_group.tadpole_group_id'))
+    well_type_id = Column(Integer, ForeignKey("well_type.well_type_id"))
+    tadpole_group_id = Column(Integer, ForeignKey("tadpole_group.tadpole_group_id"))
 
-    # Relationships
-    tadpole_group = relationship("TadpoleGroup", back_populates="trials")
     video = relationship("Video", back_populates="trials")
-    time_series = relationship("TimeSeries", back_populates="trial")
     well_type = relationship("WellType", back_populates="trials")
     tadpole_group = relationship("TadpoleGroup", back_populates="trials")
-
+    time_series = relationship("TimeSeries", back_populates="trial")
 
 
 class WellType(Base):
-    __tablename__ = 'well_type'
+    """Experimental condition applied to a well (drug, concentration)."""
+    __tablename__ = "well_type"
+
     well_type_id = Column(Integer, primary_key=True)
     name = Column(String(255))
-    description = Column(TEXT)
-    
-    well_attribute_1 = Column(Integer, ForeignKey('well_type_attribute.well_type_attribute_id'), nullable=True)
-    well_attribute_2 = Column(Integer, ForeignKey('well_type_attribute.well_type_attribute_id'), nullable=True)
-    well_attribute_3 = Column(Integer, ForeignKey('well_type_attribute.well_type_attribute_id'), nullable=True)
-    well_attribute_4 = Column(Integer, ForeignKey('well_type_attribute.well_type_attribute_id'), nullable=True)
-    well_attribute_5 = Column(Integer, ForeignKey('well_type_attribute.well_type_attribute_id'), nullable=True)
-    attributes = relationship("WellTypeAttributes", secondary=well_type_attributes_association, back_populates="well_types")
-    trials= relationship("Trial", back_populates="well_type")
+    description = Column(Text)
 
-    
-class WellTypeAttributes(Base):
-    # the attributes that have been previously assigned to wells
-    """Represents an attribute that can be assigned to a well, describing their characteristics.
-    
-    Attributes:
-        id (Integer): The primary key.
-        name (String): The name of the attribute.
-        stimuli (relationship): Many-to-many relationship to `Well`.
-    """
-    __tablename__ = 'well_type_attribute'
+    # Legacy per-row attribute slots
+    well_attribute_1 = Column(Integer, ForeignKey("well_type_attribute.well_type_attribute_id"), nullable=True)
+    well_attribute_2 = Column(Integer, ForeignKey("well_type_attribute.well_type_attribute_id"), nullable=True)
+    well_attribute_3 = Column(Integer, ForeignKey("well_type_attribute.well_type_attribute_id"), nullable=True)
+    well_attribute_4 = Column(Integer, ForeignKey("well_type_attribute.well_type_attribute_id"), nullable=True)
+    well_attribute_5 = Column(Integer, ForeignKey("well_type_attribute.well_type_attribute_id"), nullable=True)
+
+    attributes = relationship(
+        "WellTypeAttribute",
+        secondary=well_type_attributes_assoc,
+        back_populates="well_types",
+    )
+    trials = relationship("Trial", back_populates="well_type")
+
+
+class WellTypeAttribute(Base):
+    """Free-form tag for well conditions (e.g. '4-AP', '10 mM')."""
+    __tablename__ = "well_type_attribute"
+
     well_type_attribute_id = Column(Integer, primary_key=True)
-    name = Column(String)
-    # Ensure relationships are correctly defined
-    well_types = relationship("WellType", secondary=well_type_attributes_association, back_populates="attributes")
+    name = Column(String(255))
 
+    well_types = relationship(
+        "WellType",
+        secondary=well_type_attributes_assoc,
+        back_populates="attributes",
+    )
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Time-series data  « the big tables »                         │
+# └──────────────────────────────────────────────────────────────┘
 
 class TimeSeries(Base):
-    __tablename__ = 'time_series'
+    """One frame of one trial — the temporal backbone."""
+    __tablename__ = "time_series"
 
     time_series_id = Column(Integer, primary_key=True)
-    trial_id = Column(Integer, ForeignKey('trial.trial_id'))
+    trial_id = Column(Integer, ForeignKey("trial.trial_id"))
     frame_number = Column(Integer)
 
-    # Relationships
     trial = relationship("Trial", back_populates="time_series")
     trajectories = relationship("Trajectory", back_populates="time_series")
     postures = relationship("Posture", back_populates="time_series")
     velocities = relationship("Velocity", back_populates="time_series")
     clusterings = relationship("Clustering", back_populates="time_series")
 
+
+class BodyPart(Base):
+    """Anatomical landmark tracked by DeepLabCut."""
+    __tablename__ = "body_part"
+
+    body_part_id = Column(Integer, primary_key=True)
+    body_marker = Column(String(255))
+
+    trajectories = relationship("Trajectory", back_populates="body_part")
+    postures = relationship("Posture", back_populates="body_part")
+
+
 class Trajectory(Base):
-    __tablename__ = 'trajectory'
+    """Raw tracked position (pixels → mm) of one body part at one frame."""
+    __tablename__ = "trajectory"
 
     trajectory_id = Column(Integer, primary_key=True)
-    time_series_id = Column(Integer, ForeignKey('time_series.time_series_id'))
-    body_part_id = Column(Integer, ForeignKey('body_part.body_part_id'))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    body_part_id = Column(Integer, ForeignKey("body_part.body_part_id"))
     x_pos_mm = Column(Float)
     y_pos_mm = Column(Float)
 
-    # Relationships
     time_series = relationship("TimeSeries", back_populates="trajectories")
     body_part = relationship("BodyPart", back_populates="trajectories")
 
 
 class Posture(Base):
-    __tablename__ = 'posture'
+    """Frons-aligned body-part position at one frame."""
+    __tablename__ = "posture"
 
     posture_id = Column(Integer, primary_key=True)
-    time_series_id = Column(Integer, ForeignKey('time_series.time_series_id'))
-    body_part_id = Column(Integer, ForeignKey('body_part.body_part_id'))
-    x_pos_mm = Column(Float) # in units because this  is a normalised unit space based on body length
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    body_part_id = Column(Integer, ForeignKey("body_part.body_part_id"))
+    x_pos_mm = Column(Float)
     y_pos_mm = Column(Float)
 
-    # Relationships
     time_series = relationship("TimeSeries", back_populates="postures")
     body_part = relationship("BodyPart", back_populates="postures")
-    
+
+
 class Velocity(Base):
-    __tablename__ = 'velocity'
+    """Body-centric velocity at one frame."""
+    __tablename__ = "velocity"
 
     velocity_id = Column(Integer, primary_key=True)
-    time_series_id = Column(Integer, ForeignKey('time_series.time_series_id'))
-    thrust_mm_s= Column(Float) # 
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    thrust_mm_s = Column(Float)
     yaw_rad_s = Column(Float)
     slip_mm_s = Column(Float)
-    # Relationships
+
     time_series = relationship("TimeSeries", back_populates="velocities")
-    
-class BodyPart(Base):
-    __tablename__ = 'body_part'
 
-    body_part_id = Column(Integer, primary_key=True)
-    body_marker = Column(String(255))
 
-    # Relationships
-    trajectories = relationship("Trajectory", back_populates="body_part")
-    # Relationships
-    postures = relationship("Posture", back_populates="body_part")
-
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Clustering results  « behavioural prototypes »               │
+# └──────────────────────────────────────────────────────────────┘
 
 class ClusteringType(Base):
-    __tablename__ = 'clustering_type'
+    """Clustering configuration (e.g. 'posture+velocity k=36')."""
+    __tablename__ = "clustering_type"
 
     clustering_type_id = Column(Integer, primary_key=True)
     clustering_type = Column(String(255))
 
-    # Relationships
     clusterings = relationship("Clustering", back_populates="clustering_type")
 
 
 class Clustering(Base):
-    __tablename__ = 'clustering'
+    """Cluster assignment for one frame under one clustering config."""
+    __tablename__ = "clustering"
 
     clustering_id = Column(Integer, primary_key=True)
-    clustering_type_id = Column(Integer, ForeignKey('clustering_type.clustering_type_id'))
-    time_series_id = Column(Integer, ForeignKey('time_series.time_series_id'))
+    clustering_type_id = Column(Integer, ForeignKey("clustering_type.clustering_type_id"))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
     centroid = Column(Integer)
 
-    # Relationships
     clustering_type = relationship("ClusteringType", back_populates="clusterings")
     time_series = relationship("TimeSeries", back_populates="clusterings")
 
 
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Static data  « body parts inserted on DB creation »          │
+# └──────────────────────────────────────────────────────────────┘
+
+DEFAULT_BODY_PARTS: list[str] = [
+    "left_eye", "right_eye", "frons", "tail_base",
+    "tail_1", "tail_2", "tail_3", "tail_end",
+]
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ DatabaseHandler  « session management and CRUD »             │
+# └──────────────────────────────────────────────────────────────┘
+
 class DatabaseHandler:
-    def __init__(self, connection_string):
-        """
-        Initializes the database handler with a connection string.
-        
-        Args:
-            connection_string (str): The database connection string.
-        """
+    """Context-managed SQLAlchemy session wrapper.
+
+    Creates tables and inserts static body-part rows when a new
+    SQLite database is initialised.
+
+    Usage::
+
+        with DatabaseHandler("sqlite:///tadpoles.db") as db:
+            db.add_record(Investigator(first_name="Alex", last_name="Matthews"))
+            investigators = db.get_records(Investigator)
+    """
+
+    def __init__(self, connection_string: str) -> None:
         self.engine = create_engine(connection_string)
-        self.Session = sessionmaker(bind=self.engine)
-        if connection_string.startswith('sqlite:///'):
-            db_path = connection_string.replace('sqlite:///', '')
-            if not os.path.exists(db_path):
-                self.create_database()
-                self.insert_static_bodyparts()
-                
-    def __enter__(self):
-        """
-        Enters a runtime context related to this object. The with statement will bind this method’s return
-        value to the target specified in the as clause of the statement.
-        """
-        self.session = self.Session()
+        self.SessionFactory = sessionmaker(bind=self.engine)
+        self.session: Optional[Session] = None
+
+        if connection_string.startswith("sqlite:///"):
+            db_path = Path(connection_string.replace("sqlite:///", ""))
+            if not db_path.exists():
+                self._create_database()
+
+    def __enter__(self) -> DatabaseHandler:
+        self.session = self.SessionFactory()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Exits the runtime context and optionally handles an exception.
-        
-        Args:
-            exc_type: The type of the exception.
-            exc_val: The value of the exception.
-            exc_tb: The traceback of the exception.
-        """
-        self.session.close()
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self.session is not None:
+            self.session.close()
 
-    def create_database(self):
-        """
-        Creates the database tables and prints an ASCII art message indicating creation.
-        """
+    # ── schema creation ──────────────────────────────────────
+
+    def _create_database(self) -> None:
+        """Create all tables and insert default body parts."""
         Base.metadata.create_all(self.engine)
-        print(r"""
-        *********************************************
-        *                                           *
-        *     New Database Created Successfully!    *
-        *                                           *
-        *********************************************
-        """)
+        with self.SessionFactory() as session:
+            for name in DEFAULT_BODY_PARTS:
+                session.add(BodyPart(body_marker=name))
+            session.commit()
 
+    # ── CRUD ─────────────────────────────────────────────────
 
-    def execute_query(self, query, params=None):
-        """
-        Executes a SQL query directly.
-
-        Args:
-            query (str): The SQL query to execute.
-            params (dict, optional): Parameters to pass to the SQL query.
-
-        Returns:
-            The result of the query execution.
-        """
-        if params is None:
-            result = self.session.execute(query)
-        else:
-            result = self.session.execute(query, params)
-        return result
-
-    def add_record(self, record):
-        """
-        Adds a new record to the session.
-
-        Args:
-            record (Base): The record (instance of a mapped class) to add.
-        """
+    def add_record(self, record: Base) -> None:
+        """Insert a single record and commit."""
         self.session.add(record)
         self.session.commit()
 
-    def get_records(self, model, filters=None):
-        """
-        Retrieves records from the database based on the model and filters provided.
+    def get_records(
+        self,
+        model: type[Base],
+        filters: Optional[dict[str, Any]] = None,
+    ) -> list[Base]:
+        """Query records, optionally filtered by column values.
+
+        Pass a set as a filter value to use SQL ``IN``.
         """
         query = self.session.query(model)
         if filters:
             for attr, value in filters.items():
-                if isinstance(value, set):
-                    query = query.filter(getattr(model, attr).in_(value))
+                col = getattr(model, attr)
+                if isinstance(value, (set, list, tuple)):
+                    query = query.filter(col.in_(value))
                 else:
-                    query = query.filter(getattr(model, attr) == value)
+                    query = query.filter(col == value)
         return query.all()
 
-
-    def update_records(self, model, filters, updates):
-        """
-        Updates records based on the model, filters, and updates provided.
-
-        Args:
-            model (Base): The model class to update.
-            filters (dict): Conditions to filter the records to update.
-            updates (dict): Dictionary of fields to update.
-        """
-        records = self.session.query(model).filter_by(**filters).update(updates)
+    def update_records(
+        self,
+        model: type[Base],
+        filters: dict[str, Any],
+        updates: dict[str, Any],
+    ) -> int:
+        """Bulk-update matching records.  Returns count of rows updated."""
+        n = self.session.query(model).filter_by(**filters).update(updates)
         self.session.commit()
-        return records
+        return n
 
-    def delete_records(self, model, filters):
-        """
-        Deletes records based on the model and filters provided.
-
-        Args:
-            model (Base): The model class from which to delete records.
-            filters (dict): Conditions to filter the records to delete.
-        """
-        records = self.session.query(model).filter_by(**filters).delete()
+    def delete_records(
+        self,
+        model: type[Base],
+        filters: dict[str, Any],
+    ) -> int:
+        """Delete matching records.  Returns count of rows deleted."""
+        n = self.session.query(model).filter_by(**filters).delete()
         self.session.commit()
-        return records
-    
-    def find_experimentseries_by_attributes(self, attribute_ids, experiment_type_id, investigator_id, experiment_date):
-        """
-        Finds a fly that has all the specified attributes and matches the given genotype, gender, and age,
-        regardless of the order or specific attribute columns.
+        return n
+
+    # ── domain queries ───────────────────────────────────────
+
+    def find_series_by_attributes(
+        self,
+        attribute_ids: list[int],
+        experiment_type_id: int,
+        investigator_id: int,
+        experiment_date: Any,
+    ) -> Optional[int]:
+        """Find an ExperimentSeries matching all given attribute IDs.
+
+        Queries the many-to-many attributes relationship on the
+        associated ExperimentType rather than hardcoded column slots.
 
         Args:
-            attribute_ids (list of int): List of attribute IDs to check against fly attributes.
-            genotype_id (int): ID of the genotype that the fly should match.
-            is_female (bool): Gender of the fly to match.
-            age_day_after_eclosion (float): Age of the fly to match.
+            attribute_ids:     Attribute IDs that must all be present.
+            experiment_type_id: Required experiment type.
+            investigator_id:   Required investigator.
+            experiment_date:   Required date.
 
         Returns:
-            int: The ID of the fly if found, None otherwise.
+            series_id if found, None otherwise.
         """
-        from sqlalchemy import and_
+        target = set(attribute_ids)
 
-        # Convert list to set for easy comparison
-        attribute_set = set(attribute_ids)
-
-        # Fetch all flies matching the genotype, gender, and age
-        exp_series = self.session.query(ExperimentSeries).filter(
+        candidates = self.session.query(ExperimentSeries).filter(
             and_(
                 ExperimentSeries.experiment_type_id == experiment_type_id,
                 ExperimentSeries.investigator_id == investigator_id,
-                ExperimentSeries.experiment_date == experiment_date
+                ExperimentSeries.experiment_date == experiment_date,
             )
         ).all()
 
-        for series in exp_series:
-            # Gather all attribute IDs from the fly into a set
-            series_attributes = set(
-                getattr(series, f'fly_attribute_{i}') for i in range(1, 3)
-                if getattr(series, f'fly_attribute_{i}', None) is not None
-            )
+        for series in candidates:
+            # Use the many-to-many relationship via ExperimentType
+            series_attrs = {
+                a.experiment_type_attribute_id
+                for a in series.experiment_type.attributes
+            }
+            if target == series_attrs:
+                return series.series_id
 
-            # Check if the sets match
-            if attribute_set == series_attributes:
-                return series.id
-        
         return None
 
-    def get_bodyparts(self):
-        self.session=self.Session()
-        bodyparts = self.session.query(BodyPart.body_part_id, BodyPart.body_marker).all()
-        return [(body_part.body_part_id, body_part.body_marker) for body_part in bodyparts]
-    
-    def insert_static_bodyparts(self):
-        body_parts = [
-            'left_eye', 'right_eye', 'frons','tail_base', 'tail_1', 'tail_2', 
-            'tail_3', 'tail_end', 
-        ]
-        with self.Session() as session:
-            for part in body_parts:
-                body_part = BodyPart(body_marker=part)
-                session.add(body_part)
-            session.commit()
-'''
-# Assuming you have a model defined as `MyModel` and SQLAlchemy setup done.
-db_url = 'sqlite:///your_database.db'
-with DatabaseHandler(db_url) as db:
-    # Adding a new record
-    new_record = MyModel(name="New Record")
-    db.add_record(new_record)
-
-    # Querying records
-    records = db.get_records(MyModel, filters={'name': 'New Record'})
-
-    # Updating records
-    db.update_records(MyModel, filters={'name': 'New Record'}, updates={'name': 'Updated Record'})
-
-    # Deleting records
-    db.delete_records(MyModel, filters={'name': 'Updated Record'})
-
-'''
-
+    def get_bodyparts(self) -> list[tuple[int, str]]:
+        """Return all (body_part_id, body_marker) pairs."""
+        with self.SessionFactory() as session:
+            rows = session.query(
+                BodyPart.body_part_id, BodyPart.body_marker
+            ).all()
+            return [(r.body_part_id, r.body_marker) for r in rows]
