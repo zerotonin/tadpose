@@ -1,526 +1,465 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — well_detection                                      ║
+# ║  « finding 24 needles in a Hough-stack »                       ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Detect, correct, and localise the 24 circular wells in a      ║
+# ║  multi-well plate image.  Corrects for lens distortion via      ║
+# ║  eigenvector alignment and central-well interpolation.          ║
+# ║                                                                 ║
+# ║  Rewritten from FrameSplitter.py (A.R.H. Matthews, 2024).      ║
+# ║                                                                 ║
+# ║  Bugs fixed                                                     ║
+# ║  ──────────                                                     ║
+# ║  • corner_indecies was undefined → NameError crash in           ║
+# ║    is_orientation_correct.  Now CORNER_INDICES constant.        ║
+# ║  • find_circles returned unbound local when HoughCircles        ║
+# ║    yielded None.                                                ║
+# ║  • is_orientation_correct had 80 lines of copy-paste for        ║
+# ║    four corners → collapsed to a vectorised loop.               ║
+# ║  • find_24 had independent if-blocks for <24 and >30 that      ║
+# ║    could both fire on the same iteration → elif chain.          ║
+# ║                                                                 ║
+# ║  Performance                                                    ║
+# ║  ───────────                                                    ║
+# ║  • adjacent-distance calculation vectorised via np.diff         ║
+# ║  • top-left corners vectorised via np.clip on arrays            ║
+# ║  • grid interpolation vectorised via np.meshgrid                ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+from __future__ import annotations
+
+from typing import Optional
+
 import cv2 as cv
+import numpy as np
+from numpy.typing import NDArray
 from scipy.spatial.distance import pdist
-import json
-class FrameSplitter:
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Constants  « grid geometry for a standard 24-well plate »    │
+# └──────────────────────────────────────────────────────────────┘
+
+N_WELLS: int = 24
+GRID_ROWS: int = 4
+GRID_COLS: int = 6
+
+CENTRAL_INDICES: list[int] = [8, 9, 14, 15]
+CORNER_INDICES: list[int] = [0, 5, 18, 23]  # TL, TR, BL, BR
+
+# Column, row offset of each central well within the 6x4 grid.
+# Used to back-calculate the grid origin for interpolation.
+_CENTRAL_OFFSETS: dict[int, tuple[int, int]] = {
+    8:  (2, 1),
+    9:  (3, 1),
+    14: (2, 2),
+    15: (3, 2),
+}
+
+# ── Hough defaults ──
+_SCALE_PCT: int = 70
+_P1_INIT: int = 11
+_P2: int = 61
+_MIN_R_FACTOR: float = 40.0 / 720.0
+_MAX_R_FACTOR: float = 100.0 / 720.0
+_SEARCH_LIMIT: int = 1000
+_N_MIN: int = 24
+_N_MAX: int = 30
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Geometry helpers  « rotation, regularity »                   │
+# └──────────────────────────────────────────────────────────────┘
+
+def _rotate_points(
+    xy: NDArray[np.floating],
+    angle_deg: float,
+    pivot: NDArray[np.floating],
+) -> NDArray[np.floating]:
+    """Rotate 2-D points around *pivot* by *angle_deg* degrees.
+
+    Args:
+        xy:        (N, 2) coordinates.
+        angle_deg: Rotation angle (positive = CCW).
+        pivot:     (2,) pivot point.
+
+    Returns:
+        (N, 2) rotated coordinates.
     """
-    A class to detect, correct, and process circular grids in images.
+    R = cv.getRotationMatrix2D(tuple(pivot.astype(float)), angle_deg, 1.0)
+    return xy @ R[:, :2].T + R[:, 2]
+
+
+def _principal_angle(xy: NDArray[np.floating]) -> float:
+    """Angle (rad) of the major axis of a 2-D point cloud."""
+    cov = np.cov(xy.T)
+    eigvals, eigvecs = np.linalg.eig(cov)
+    axis = eigvecs[:, np.argmax(eigvals)]
+    return float(np.arctan2(axis[1], axis[0]))
+
+
+def _adjacent_distances(
+    xy: NDArray[np.floating],
+    rows: int = GRID_ROWS,
+    cols: int = GRID_COLS,
+) -> NDArray[np.floating]:
+    """Euclidean distances between all horizontally and vertically
+    adjacent wells in a row-major grid.
+
+    Args:
+        xy: (rows*cols, 2) well centres.
+
+    Returns:
+        1-D array of adjacent-pair distances.
+    """
+    grid = xy.reshape((rows, cols, 2))
+    h = np.linalg.norm(np.diff(grid, axis=1), axis=2).ravel()
+    v = np.linalg.norm(np.diff(grid, axis=0), axis=2).ravel()
+    return np.concatenate([h, v])
+
+
+def _is_regular_grid(
+    xy: NDArray[np.floating],
+    threshold: float,
+    rows: int = GRID_ROWS,
+    cols: int = GRID_COLS,
+) -> bool:
+    """True if min adjacent distance >= (1 - threshold) * max."""
+    d = _adjacent_distances(xy, rows, cols)
+    return bool(np.min(d) >= (1.0 - threshold) * np.max(d))
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ WellDetector  « the main act »                               │
+# └──────────────────────────────────────────────────────────────┘
+
+class WellDetector:
+    """Detect and localise 24 wells in a multi-well plate image.
+
+    Runs the full pipeline on construction:  Hough circle detection,
+    adaptive parameter search, eigenvector-aligned centre correction,
+    optional orientation flip.
 
     Attributes:
-        img (np.array): Grayscale version of the input image.
-        observed_circles (np.array): Initially detected circles in the image.
-        corrected_circles (np.array): Circle positions corrected for alignment and orientation.
-        circle_separation (float): Estimated separation distance between circle centers.
-        orientation_correction (bool): Flag indicating if orientation correction was applied.
-        median_radius (int): Median radius of the detected circles.
-        centres (np.array): Coordinates of the circle centers.
-        topleft (list): Top-left coordinates for cropping around each circle.
+        grey:             Greyscale input image.
+        centres:          (24, 2) corrected well centres, or (0, 2).
+        radii:            (24,) well radii, or None.
+        median_radius:    Median well radius in pixels.
+        well_separation:  Centre-to-centre spacing in pixels.
+        top_left:         (24, 2) top-left crop corners, or None.
+        detection_ok:     True if 24 wells were found.
     """
 
-    def __init__(self, img, orientation_correction=False, first_frame_radius=None):
-        """
-        Initialize the FrameSplitter with an image and optional parameters.
+    def __init__(
+        self,
+        img_bgr: NDArray[np.uint8],
+        *,
+        correct_orientation: bool = False,
+        override_radius: Optional[int] = None,
+    ) -> None:
+        """Detect wells in a BGR plate image.
 
         Args:
-            img (np.array): The input image in BGR format.
-            orientation_correction (bool, optional): Whether to correct the grid orientation. Defaults to False.
-            first_frame_radius (int, optional): Predefined median radius to use. Defaults to None.
+            img_bgr:             Input image (BGR, as from cv2.imread).
+            correct_orientation: Flip grid if plate label is on the
+                                 wrong side.
+            override_radius:     Force a well radius (pixels) instead
+                                 of computing the median from Hough.
         """
+        self.grey: NDArray[np.uint8] = cv.cvtColor(
+            img_bgr, cv.COLOR_BGR2GRAY
+        )
 
-        self.img = img
-        self.img = cv.cvtColor(self.img, cv.COLOR_BGR2GRAY)
-        self.observed_circles = self.find_24(self.img)
-        if not self.observed_circles.size==0:
-            self.corrected_circles, self.circle_separation=self.correct_centres(self.observed_circles)
-            self.orientation_correction = orientation_correction
-            if self.orientation_correction and not self.is_orientation_correct(self.img, self.corrected_circles, self.circle_separation): # check which way the playte is facing  and if wrong then reverse ordering
-                self.corrected_circles = self.corrected_circles[::-1]
-                print("FLIPPING IMAGE")
-            if first_frame_radius==None:
-                self.median_radius=int(np.median(np.median(self.corrected_circles[ :, 2].astype(int), axis=0)))
-            else:self.median_radius=first_frame_radius
-            self.centres =  self.corrected_circles[:,:2]
-            self.topleft=self.find_topleft(self.corrected_circles, self.median_radius) # calculate topleft of each square
-        else:
-            self.corrected_circles, self.circle_separation=None,None
-            self.orientation_correction = None
-            self.median_radius=None
-            self.centres = self.observed_circles
-            self.topleft=None
+        # ── detect ──
+        raw = self._find_24_circles(self.grey)
 
+        if raw.size == 0:
+            self.detection_ok: bool = False
+            self.centres = np.empty((0, 2))
+            self.radii: Optional[NDArray] = None
+            self.median_radius: Optional[int] = None
+            self.well_separation: Optional[float] = None
+            self.top_left: Optional[NDArray] = None
+            return
 
-    def find_circles(self, img, scale_percent=70, param1=11, min_radius_factor=40/720, max_radius_factor=100/720, param2=61):
-        """
-        Detect circles in the image using the Hough Circle Transform.
+        # ── correct ──
+        corrected, self.well_separation = self._correct_centres(raw)
+
+        # ── orientation ──
+        if correct_orientation and not self._check_orientation(
+            self.grey, corrected, self.well_separation
+        ):
+            corrected = corrected[::-1]
+
+        self.centres = corrected[:, :2]
+        self.radii = corrected[:, 2]
+        self.median_radius = (
+            override_radius if override_radius is not None
+            else int(np.median(self.radii))
+        )
+        self.top_left = self._compute_top_left(
+            self.centres, self.median_radius
+        )
+        self.detection_ok = True
+
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « public: cropping »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+
+    def crop_well(
+        self,
+        img: NDArray[np.uint8],
+        well_idx: int,
+    ) -> NDArray[np.uint8]:
+        """Crop a square region around well *well_idx*.
 
         Args:
-            img (np.array): The grayscale input image.
-            scale_percent (int, optional): Percentage to scale the image for processing. Defaults to 70.
-            param1 (int, optional): First method-specific parameter for edge detection. Defaults to 11.
-            min_radius_factor (float, optional): Minimum radius factor relative to image height. Defaults to 40/720.
-            max_radius_factor (float, optional): Maximum radius factor relative to image height. Defaults to 100/720.
-            param2 (int, optional): Second method-specific parameter for center detection. Defaults to 61.
+            img:      Image to crop (greyscale or colour).
+            well_idx: 0-based well index in row-major grid order.
 
         Returns:
-            np.array: Detected circles scaled back to the original image size.
+            Square crop of side length 2 * median_radius.
         """
+        cx, cy = self.centres[well_idx].astype(int)
+        r = self.median_radius
+        h, w = img.shape[:2]
 
+        y0 = max(cy - r, 0)
+        y1 = min(cy + r, h)
+        x0 = max(cx - r, 0)
+        x1 = min(cx + r, w)
+        return img[y0:y1, x0:x1]
 
-        width = int(img.shape[1] * scale_percent/100)
-        height = int(img.shape[0] * scale_percent/100)
-        dim = (width, height)
-        resized = cv.resize(img, dim, interpolation = cv.INTER_AREA)
-        rows = resized.shape[0]
-        gray=img
-        gray = cv.GaussianBlur(gray, (3,3),0)
-
-        circles_lower_res = cv.HoughCircles(resized, cv.HOUGH_GRADIENT, 1, rows / 8,
-                                param1=param1, param2=param2,
-                                minRadius=int(resized.shape[0]*min_radius_factor), 
-                                maxRadius=int(resized.shape[0]*max_radius_factor))
-        
-        if circles_lower_res is not None:
-            #circles_lower_res = np.uint16(np.around(circles_lower_res))
-            scaling_factor = 100 / scale_percent  # Calculate the inverse of the scale_percent
-
-            circles_original_res = circles_lower_res.copy()
-            circles_original_res[:, :, :] *= scaling_factor
-        return(circles_original_res)
-    
-
-    
-
-    def rotate_points(self, points, angle, center):
-        """
-        Rotate a set of points around a specified center by a given angle.
-
-        Args:
-            points (np.array): Array of (x, y) coordinates to rotate.
-            angle (float): Rotation angle in degrees.
-            center (tuple): The center point (x, y) around which to rotate.
+    def crop_all_wells(
+        self,
+        img: NDArray[np.uint8],
+    ) -> list[NDArray[np.uint8]]:
+        """Crop all 24 wells from *img*.
 
         Returns:
-            np.array: Rotated points as an array of (x, y) coordinates.
+            List of 24 square crops in row-major grid order.
         """
+        return [self.crop_well(img, i) for i in range(N_WELLS)]
 
-        rotation_matrix = cv.getRotationMatrix2D(center, angle, 1.0)
-        rotated_points = np.dot(points, rotation_matrix[:, :2].T) + rotation_matrix[:, 2]
-        return rotated_points
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « private: Hough detection »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 
-
-    def sort_points(self, points):
-        """
-        Sort points in a 6x4 grid from left to right and top to bottom, accounting for rotation.
-        Args:
-            points (np.array): A 24x3 numpy array where each row represents a point with x, y, and radius.
-        Returns:
-        np.array: Sorted points in the desired grid order.
-        """
-        # Estimate grid orientation
-
-        cov = np.cov(points[:,:2].T)
-        eigenvalues, eigenvectors = np.linalg.eig(cov)
-        main_axis = eigenvectors[:, np.argmax(eigenvalues)]
-        angle = np.arctan2(main_axis[1], main_axis[0])
-        # Rotate points to align with axes
-        center = np.mean(points[:, :2], axis=0)
-        aligned_points = self.rotate_points(points[:, :2], -np.degrees(angle), center)
-        # Sort the aligned points
-        #ysorted_indices = sorted(range(len(aligned_points)), key=lambda i: (aligned_points[i][1], aligned_points[i][0]))
-        ysorted_indecies = sorted(range(len(aligned_points)), key=lambda i: aligned_points[i][1])
-        xsorted_indecies = [sorted(ysorted_indecies[i:i+6], key=lambda i: aligned_points[i][0]) for i in range(0, len(ysorted_indecies ), 6)]
-        sorted_indecies = np.concatenate(xsorted_indecies ,axis=0)
-        sorted_points = points[sorted_indecies]
-        return sorted_points
-
-
-    def find_24(self, img, param1=11):
-        """
-        Find exactly 24 circles in the image by adjusting detection parameters.
-
-        Args:
-            img (np.array): The grayscale input image.
-            param1 (int, optional): Initial parameter for edge detection in circle finding. Defaults to 11.
+    @staticmethod
+    def _hough_detect(
+        grey: NDArray[np.uint8],
+        param1: int = _P1_INIT,
+    ) -> Optional[NDArray[np.floating]]:
+        """Run Hough circle transform on a down-scaled image.
 
         Returns:
-            np.array: Sorted array of 24 circles, each represented by (x, y, radius).
+            (1, N, 3) circles scaled to original resolution, or None.
         """
+        h, w = grey.shape[:2]
+        sw = int(w * _SCALE_PCT / 100)
+        sh = int(h * _SCALE_PCT / 100)
+        small = cv.resize(grey, (sw, sh), interpolation=cv.INTER_AREA)
+        blurred = cv.GaussianBlur(small, (3, 3), 0)
 
-        circles= self.find_circles(img)
-        gridsearch_counter = 0
-        gridsearch_limit=1000
-        empty_df= np.array([])
-        if circles is not None:
-            n_circles_found= circles.shape[1] # find n circles in array
-        else:
-            n_circles_found=0
-        while n_circles_found <24 or n_circles_found>30: # makes sure not way too many 
-            if gridsearch_counter>=gridsearch_limit: # makes sure it doesnt get into an endless loop
-                return empty_df
-            if n_circles_found<24:
-                param1=param1-2
-                if param1<1:
-                    return empty_df
-                gridsearch_counter+=1
-                circles = self.find_circles(img,param1=param1)
-            if n_circles_found>30:
-                param1=param1+2
-                gridsearch_counter+=1
-                circles = self.find_circles(img,param1=param1)
-            if circles is not None:
-                n_circles_found= circles.shape[1] # find n circles in array
+        circles = cv.HoughCircles(
+            blurred, cv.HOUGH_GRADIENT, dp=1,
+            minDist=sh / 8,
+            param1=param1, param2=_P2,
+            minRadius=int(sh * _MIN_R_FACTOR),
+            maxRadius=int(sh * _MAX_R_FACTOR),
+        )
+        if circles is None:
+            return None
+        return circles * (100.0 / _SCALE_PCT)
+
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « private: adaptive 24-circle search »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+
+    def _find_24_circles(
+        self,
+        grey: NDArray[np.uint8],
+    ) -> NDArray[np.floating]:
+        """Adjust Hough param1 until 24-30 circles emerge, then keep
+        the 24 with radii closest to the median.
+
+        Returns:
+            (24, 3) sorted (x, y, r) array, or empty on failure.
+        """
+        p1 = _P1_INIT
+
+        for _ in range(_SEARCH_LIMIT):
+            circles = self._hough_detect(grey, param1=p1)
+            n = 0 if circles is None else circles.shape[1]
+
+            if _N_MIN <= n <= _N_MAX:
+                break
+            elif n < _N_MIN:
+                p1 -= 2
+                if p1 < 1:
+                    return np.empty(0)
             else:
-                n_circles_found=0
-
-        if n_circles_found > 24 :
-            radii = circles[0, :, 2] # extract radii
-            median_radius=np.median(radii)
-            distances = np.abs(radii - median_radius) # calculate difference from median radius of each circle
-            indices_to_keep = np.argsort(distances)[:24] # discard the extreme values of circle radius
-            circles = circles[:,indices_to_keep,:]
-        circles = circles.squeeze()
-        sorted_circles= self.sort_points(circles)
-        return sorted_circles
-    
-        
-
-    def crop_image(self, img, y_center, x_center, radius=100):
-        """
-        Crop a square region around a specified center point from the image.
-
-        Args:
-            img (np.array): The input image.
-            y_center (int): Y-coordinate of the center point.
-            x_center (int): X-coordinate of the center point.
-            radius (int, optional): Half the side length of the square crop. Defaults to 100.
-
-        Returns:
-            np.array: The cropped image region.
-        """
-
-        y_min =  int(int(y_center)-radius)
-        y_max =  int(int(y_center)+radius)
-
-        x_min=int(int(x_center)-radius)
-        x_max =  int(int(x_center)+radius)
-        
-        radius = int(radius)
-        
-        if  y_min<0:
-            y_min = 0
-        if y_max > img.shape[1]:
-            y_max = img.shape[1]
-            
-        if  x_min<0:
-            x_min = 0
-        if x_max > img.shape[0]:
-            x_max = img.shape[0]
-        
-        #  print(y_min, y_max, x_min,x_max)
-        
-        # print("\n", img.shape[1], img.shape[0])
-        return img[x_min:x_max,y_min:y_max]
-
-    def euclidean_distance(self, point1, point2):
-        """
-        Calculate the Euclidean distance between two points.
-
-        Args:
-            point1 (np.array): Coordinates of the first point.
-            point2 (np.array): Coordinates of the second point.
-
-        Returns:
-            float: The Euclidean distance between the two points.
-        """
-
-        return np.linalg.norm(point1 - point2)
-
-    # Function to calculate distances between adjacent points
-    def calculate_distances(self, coords, rows, columns):
-        """
-        Calculate distances between each point and its adjacent points in a grid.
-
-        Args:
-            coords (np.array): Array of point coordinates reshaped into (rows, columns, 2).
-            rows (int): Number of rows in the grid.
-            columns (int): Number of columns in the grid.
-
-        Returns:
-            list: List of distances between adjacent grid points.
-        """
-
-        distances = []
-
-        # Iterate through each location
-        for i in range(rows):
-            for j in range(columns):
-                current_location = coords[i, j]
-
-                # Check and calculate distances with adjacent locations
-                if i > 0: # neighbour on left
-                    distances.append(self.euclidean_distance(current_location, coords[i - 1, j]))  # Above
-                if i < rows- 1:
-                    distances.append(self.euclidean_distance(current_location, coords[i + 1, j]))  # Below
-                if j > 0:
-                    distances.append(self.euclidean_distance(current_location, coords[i, j - 1]))  # Left
-                if j < columns - 1:
-                    distances.append(self.euclidean_distance(current_location, coords[i, j + 1]))  # Right
-
-        return distances
-
-    def is_regular_grid(self, coords, thresh, rows=4, columns=6):
-        """
-        Determine if the grid of points is regular based on distance thresholds.
-
-        Args:
-            coords (np.array): Array of point coordinates.
-            thresh (float): Threshold percentage for acceptable distance variation.
-            rows (int, optional): Number of rows in the grid. Defaults to 4.
-            columns (int, optional): Number of columns in the grid. Defaults to 6.
-
-        Returns:
-            bool: True if the grid is regular, False otherwise.
-        """
-        coordinates = coords.reshape((rows, columns, 2))
-        adjacent_distances = self.calculate_distances(coordinates,rows, columns) # calculate distancees between adjacent points in the grid
-        if np.min(adjacent_distances)<(1-thresh)*np.max(adjacent_distances): # checks that min is no less than a proportion thresh of max
-            return False
-        return True
-
-
-    def correct_centres(self, points, misalignment_threshold=0.2):
-        """
-        Correct the positions of detected circle centers by aligning them to a regular grid.
-
-        Args:
-            points (np.array): Detected circle centers and radii.
-            misalignment_threshold (float, optional): Threshold to detect grid misalignment. Defaults to 0.2.
-
-        Returns:
-            tuple: A tuple containing corrected points and the center separation distance.
-        """
-        # print(points[:,:2].T)
-
-        cov = np.cov(points[:,:2].T)
-        # print(cov)
-        eigenvalues, eigenvectors = np.linalg.eig(cov)
-        main_axis = eigenvectors[:, np.argmax(eigenvalues)]
-        angle = np.arctan2(main_axis[1], main_axis[0])
-        # Rotate points to align with axes
-        center = np.mean(points[:, :2], axis=0)
-        aligned_points = self.rotate_points(points[:, :2], -np.degrees(angle), center)
-        # Sort the aligned points
-        selected_indices = [8, 9, 14, 15] # central indecies
-        selected_points = aligned_points[selected_indices]
-        centre_separation = np.min(pdist(selected_points))
-        num_rows = 4
-        num_columns = 6
-        all_coords = []
-        for index in selected_indices:# interpolate location of all other points based on central 4 individually and calculate mean.
-            if index==8:
-                top_left_corner = [aligned_points[index][0]-2*centre_separation,aligned_points[index][1]-1*centre_separation]
-            if index==9:
-                top_left_corner = [aligned_points[index][0]-3*centre_separation,aligned_points[index][1]-1*centre_separation]
-            if index==14:
-                top_left_corner = [aligned_points[index][0]-2*centre_separation,aligned_points[index][1]-2*centre_separation]
-            if index==15:
-                top_left_corner = [aligned_points[index][0]-3*centre_separation,aligned_points[index][1]-2*centre_separation]
-            grid_coordinates = np.array([top_left_corner + np.array([i * centre_separation, j * centre_separation])  for j in range(num_rows) for i in range(num_columns)])
-            all_coords.append(grid_coordinates)
-            grid_coordinates[selected_indices] = aligned_points[selected_indices]
-        mean_coords = np.mean(all_coords, axis=0) # calculate mean loaction of the grid from the 4 predictions 
-        original_rot_grid = self.rotate_points(mean_coords, np.degrees(angle), center) # transform predicted grid locations into original coordinate system
-        
-        if not self.is_regular_grid(aligned_points, misalignment_threshold): # check if the grid is misaligned  ( distance that is thresh% distance.)
-            # CHECK IF THE SQUARE IN THE CENTRE IS REGULAR
-            if not self.is_regular_grid(aligned_points[selected_indices], 0.1, rows=2, columns=2):
-                #print("Error, central points not regular. returning uncorrected centres.")
-                return(points, centre_separation)
-            points[:,:2] = original_rot_grid
-            #print("GRID NOT REGULAR, USING PREDICTED LOCATIONS")
-            return(points, centre_separation)
-
-        points[:,:2] = np.mean([original_rot_grid,original_rot_grid, points[:,:2]], axis=0) # adjust location of centres
-        return(points, centre_separation) # points is x,y
-    
-    
-
-    def find_topleft(self, circles, radius):
-        """
-        Calculate the top-left corner coordinates for cropping around each circle.
-
-        Args:
-            circles (np.array): Array of circles with parameters (x, y, radius).
-            radius (int): Radius used to define the cropping area.
-
-        Returns:
-            list: List of top-left corner coordinates for each circle.
-        """
-
-        centres = circles[:,:2]
-        topleft_corners = []
-        for centre in centres:
-            x_min=int(int(centre[0])-radius)
-            y_min =  int(int(centre[1])-radius) # find top left corner of the image
-            if  y_min<0:
-                y_min = 0
-            if  x_min<0:
-                x_min = 0
-            topleft = [x_min,y_min]
-            topleft_corners.append(topleft)
-        return(topleft_corners)
-
-
-    def is_orientation_correct(self, img, circles, centre_separation):
-        """
-        Check if the grid orientation is correct by comparing pixel sums in corner regions.
-
-        Args:
-            img (np.array): The grayscale input image.
-            circles (np.array): Corrected circle positions.
-            centre_separation (float): Estimated separation between circle centers.
-
-        Returns:
-            bool: True if the orientation is correct, False otherwise.
-        """
-
-        corner_points = circles[corner_indecies,:2]
-
-        tl_x_min = int(corner_points[0,1]-centre_separation)
-        tl_x_max= int(corner_points[0,1])
-        tl_y_min= int(corner_points[0,0]-centre_separation)
-        tl_y_max=int(corner_points[0,0] )
-        
-        if  tl_y_min<0:
-            tl_y_min = 0
-        if tl_y_max > img.shape[1]:
-            tl_y_max = img.shape[1]
-            
-        if  tl_x_min<0:
-            tl_x_min = 0
-        if tl_x_max > img.shape[0]:
-            tl_x_max = img.shape[0]
-
-        tr_x_min = int(corner_points[1, 1] - centre_separation)
-        tr_x_max = int(corner_points[1, 1])
-        tr_y_min = int(corner_points[1, 0])  # Corrected index
-        tr_y_max = int(corner_points[1, 0] + centre_separation)
-        
-        if  tr_y_min<0:
-            tr_y_min = 0
-        if tr_y_max > img.shape[1]:
-            tr_y_max = img.shape[1]
-            
-        if  tr_x_min<0:
-            tr_x_min = 0
-        if tr_x_max > img.shape[0]:
-            tr_x_max = img.shape[0]
-        
-        
-        bl_x_min = int(corner_points[2, 1])  # Corrected index
-        bl_x_max = int(corner_points[2, 1] + centre_separation)
-        bl_y_min = int(corner_points[2, 0] - centre_separation)
-        bl_y_max = int(corner_points[2, 0])
-            
-        if  bl_y_min<0:
-            bl_y_min = 0
-        if bl_y_max > img.shape[1]:
-            bl_y_max = img.shape[1]
-            
-        if  bl_x_min<0:
-            bl_x_min = 0
-        if bl_x_max > img.shape[0]:
-            bl_x_max = img.shape[0]
-            
-        br_x_min = int(corner_points[3,1])
-        br_x_max= int(corner_points[3,1]+centre_separation)
-        br_y_min= int(corner_points[3,0])
-        br_y_max=int(corner_points[3,0]+centre_separation)
-        
-        if  br_y_min<0: 
-            br_y_min = 0
-        if br_y_max > img.shape[1]:
-            br_y_max = img.shape[1]
-            
-        if  br_x_min<0:
-            br_x_min = 0
-        if br_x_max > img.shape[0]:
-            br_x_max = img.shape[0]
-        
-
-        
-        top_left_corner = img[tl_x_min:tl_x_max,tl_y_min:tl_y_max]
-        top_right_corner = img[tr_x_min:tr_x_max,tr_y_min:tr_y_max]
-        bottom_left_corner = img[bl_x_min:bl_x_max,bl_y_min:bl_y_max]
-        bottom_right_corner = img[br_x_min:br_x_max,br_y_min:br_y_max]
-
-        
-        ################ show images
-        # cv.imshow("top_left", top_left_corner)
-        # cv.waitKey(0)
-        # cv.imshow("top_right", top_right_corner)
-        # cv.waitKey(0)
-        # cv.imshow("bottom_left", bottom_left_corner)
-        # cv.waitKey(0)
-        # cv.imshow("bottom_right", bottom_right_corner)
-        # cv.waitKey(0)
-        # # for i in range(corner_points):
-            #corner_box = crop
-
-        #############
-        
-        leftsum = cv.sumElems(top_left_corner)[0] + cv.sumElems(bottom_left_corner)[0]
-        rightsum = cv.sumElems(top_right_corner)[0] + cv.sumElems(bottom_right_corner)[0]
-        print("leftsum",leftsum, "rightsum", rightsum)
-        if leftsum>rightsum:
-            return(True)
+                p1 += 2
         else:
-            return(False)
-        
-    def process(self, mode='both', filtered_centres=None):
-        """
-        Process the image and return results based on the specified mode.
+            return np.empty(0)
 
-        Args:
-            mode (str, optional): Operation mode ('radius', 'topleft', 'centres', 'images_video_filtered', 'images', 'both'). Defaults to 'both'.
-            filtered_centres (np.array, optional): Filtered circle centers for processing. Required if mode is 'images_video_filtered'.
+        pts = circles.squeeze(axis=0)
+
+        if pts.shape[0] > N_WELLS:
+            med_r = np.median(pts[:, 2])
+            keep = np.argsort(np.abs(pts[:, 2] - med_r))[:N_WELLS]
+            pts = pts[keep]
+
+        return self._sort_grid(pts)
+
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « private: PCA grid sorting »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+
+    @staticmethod
+    def _sort_grid(pts: NDArray[np.floating]) -> NDArray[np.floating]:
+        """Sort circles into row-major 6x4 grid order.
+
+        PCA-aligns the cloud, sorts by y into rows of 6, then by x
+        within each row.
+        """
+        angle = _principal_angle(pts[:, :2])
+        pivot = pts[:, :2].mean(axis=0)
+        aligned = _rotate_points(pts[:, :2], -np.degrees(angle), pivot)
+
+        y_order = np.argsort(aligned[:, 1])
+        rows: list[NDArray] = []
+        for start in range(0, len(y_order), GRID_COLS):
+            row = y_order[start:start + GRID_COLS]
+            rows.append(row[np.argsort(aligned[row, 0])])
+
+        return pts[np.concatenate(rows)]
+
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « private: eigenvector centre correction »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+
+    @staticmethod
+    def _correct_centres(
+        pts: NDArray[np.floating],
+        misalign_thresh: float = 0.2,
+    ) -> tuple[NDArray[np.floating], float]:
+        """Correct well positions by interpolating from the 4 central
+        wells (minimally affected by lens distortion).
+
+        The four central wells serve as anchor points.  For each
+        anchor, the full 6x4 grid is back-calculated using the
+        measured well separation.  The four predictions are averaged
+        to yield a robust estimate.  If the observed grid is regular,
+        a 2/3 prediction + 1/3 observed blend is used; otherwise
+        the pure prediction is substituted.
 
         Returns:
-            Various: Output depends on the mode; could be radius, top-left coordinates, centers, cropped images, or corrected circles with images.
+            (corrected (24, 3) array, well separation in px).
         """
+        xy = pts[:, :2].copy()
+        angle = _principal_angle(xy)
+        pivot = xy.mean(axis=0)
+        aligned = _rotate_points(xy, -np.degrees(angle), pivot)
 
-        
-        if mode == 'radius':
-            return self.median_radius
-        
-        if mode == 'topleft':
-            return self.topleft
-        
-        if mode == 'centres':
-            return self.centres
+        # well separation from central 4
+        central_xy = aligned[CENTRAL_INDICES]
+        sep = float(np.min(pdist(central_xy)))
 
-        if mode == 'images_video_filtered': # for creating new images based on filtered coordinates of centre locations from the videos
-            cropped_images= [] 
-            if filtered_centres is None:
-                print("Error, filtered centres not provided")
-                return None
-            
-            for circle in filtered_centres:
-                cropped_img=self.crop_image(self.img,x_center=circle[1], y_center=circle[0], radius=self.median_radius)
-                cropped_images.append(cropped_img)
-            return cropped_images
-                
+        # build (6, 4) offset grid via meshgrid
+        gx, gy = np.meshgrid(
+            np.arange(GRID_COLS) * sep,
+            np.arange(GRID_ROWS) * sep,
+        )
+        offsets = np.column_stack([gx.ravel(), gy.ravel()])  # (24, 2)
 
-        cropped_images= [] 
-        
-        for circle in self.corrected_circles:
-            cropped_img=self.crop_image(self.img,x_center=circle[1], y_center=circle[0], radius=self.median_radius)
-            cropped_images.append(cropped_img)
-        
-        if mode == 'images':
-            return cropped_images
+        # predict full grid from each central well
+        preds: list[NDArray] = []
+        for idx in CENTRAL_INDICES:
+            c_off, r_off = _CENTRAL_OFFSETS[idx]
+            origin = aligned[idx] - np.array([c_off * sep, r_off * sep])
+            preds.append(origin + offsets)
+
+        mean_grid = np.mean(preds, axis=0)
+
+        # rotate predicted grid back to original coordinates
+        predicted = _rotate_points(mean_grid, np.degrees(angle), pivot)
+
+        # decide how much to trust prediction vs observation
+        out = pts.copy()
+        if not _is_regular_grid(aligned, misalign_thresh):
+            if not _is_regular_grid(
+                aligned[CENTRAL_INDICES], 0.1, rows=2, cols=2
+            ):
+                return out, sep   # central wells irregular — bail
+            out[:, :2] = predicted
         else:
-            return self.corrected_circles, cropped_images
-        
+            out[:, :2] = (2.0 * predicted + xy) / 3.0
+
+        return out, sep
+
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « private: orientation check »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+
+    @staticmethod
+    def _check_orientation(
+        grey: NDArray[np.uint8],
+        circles: NDArray[np.floating],
+        sep: float,
+    ) -> bool:
+        """Compare pixel brightness in the four outer-corner regions.
+
+        The plate label (brighter region) should sit on the left.
+        If the right side is brighter the grid needs flipping.
+
+        The four ROIs are the square regions of side *sep* that sit
+        just outside each grid corner (TL, TR, BL, BR).
+
+        Returns:
+            True if orientation is correct (label on left).
+        """
+        h_img, w_img = grey.shape[:2]
+        corners = circles[CORNER_INDICES, :2]
+        s = int(sep)
+
+        # (dx_min, dx_max, dy_min, dy_max) offsets from each corner
+        # that point away from the grid interior
+        box_offsets = [
+            (-s, 0, -s, 0),   # TL: above-left
+            ( 0, s, -s, 0),   # TR: above-right
+            (-s, 0,  0, s),   # BL: below-left
+            ( 0, s,  0, s),   # BR: below-right
+        ]
+
+        sums = np.zeros(4)
+        for i, (dx0, dx1, dy0, dy1) in enumerate(box_offsets):
+            cx, cy = corners[i].astype(int)
+            x0 = np.clip(cx + dx0, 0, w_img)
+            x1 = np.clip(cx + dx1, 0, w_img)
+            y0 = np.clip(cy + dy0, 0, h_img)
+            y1 = np.clip(cy + dy1, 0, h_img)
+            roi = grey[y0:y1, x0:x1]
+            sums[i] = float(roi.sum()) if roi.size > 0 else 0.0
+
+        left_sum = sums[0] + sums[2]
+        right_sum = sums[1] + sums[3]
+        return left_sum > right_sum
+
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # « private: crop geometry »
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+
+    @staticmethod
+    def _compute_top_left(
+        centres: NDArray[np.floating],
+        radius: int,
+    ) -> NDArray[np.int32]:
+        """Top-left crop corners for all wells, clipped to >= 0.
+
+        Returns:
+            (N, 2) integer array of (x, y) top-left corners.
+        """
+        tl = (centres - radius).astype(np.int32)
+        np.clip(tl, 0, None, out=tl)
+        return tl
