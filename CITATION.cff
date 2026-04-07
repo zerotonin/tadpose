@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+title: "TadPose: Automated behavioural phenotyping of Xenopus laevis tadpoles from 24-well plate video"
+message: "If you use this software, please cite it as below."
+type: software
+license: MIT
+authors:
+  - family-names: Matthews
+    given-names: Alexander R. H.
+  - family-names: Beck
+    given-names: Caroline
+  - family-names: Geurten
+    given-names: Bart R. H.
+    orcid: "https://orcid.org/0000-0002-1816-3241"
+repository-code: "https://github.com/zerotonin/tadpose"
+version: 0.1.0
+date-released: "2026-01-01"

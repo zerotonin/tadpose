@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tadpose"
+version = "0.1.0"
+description = "Automated behavioural phenotyping of Xenopus laevis tadpoles from 24-well plate video."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Alexander R. H. Matthews"},
+    {name = "Caroline Beck"},
+    {name = "Bart R. H. Geurten", email = "bart.geurten@otago.ac.nz"},
+]
+keywords = [
+    "xenopus", "tadpole", "seizure", "behavioural-analysis",
+    "deeplabcut", "k-means", "posture-dynamics", "24-well-plate",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "opencv-python>=4.8",
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+    "sqlalchemy>=2.0",
+    "tables>=3.8",
+    "scikit-learn>=1.3",
+    "scikit-posthocs>=0.7",
+    "statsmodels>=0.14",
+]
+
+[project.optional-dependencies]
+gpu = ["cuml-cu12"]
+dev = ["pytest>=7.0", "sphinx", "sphinx-rtd-theme"]
+
+[project.urls]
+Repository = "https://github.com/zerotonin/tadpose"
+
+[tool.setuptools.packages.find]
+where = ["src"]

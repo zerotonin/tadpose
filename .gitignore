@@ -1,0 +1,31 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Data ──
+*.npy
+*.h5
+*.hdf5
+*.db
+*.sqlite
+
+# ── Video ──
+*.mp4
+*.avi
+
+# ── IDE ──
+.vscode/
+.idea/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Environments ──
+.env
+.venv/
