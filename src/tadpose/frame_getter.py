@@ -1,29 +1,9 @@
 import sys
 import os
 # add the directory called tatdpole_wells as the root going up from wheever I am in the file paths
-def add_project_root_to_sys_path(target_dir_name='tadpole_wells'):
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    while True:
-        if os.path.basename(current_dir) == target_dir_name:
-            sys.path.append(current_dir)
-            print(f"Added {current_dir} to sys.path")
-            break
-        
-        parent_dir = os.path.dirname(current_dir)
-        if parent_dir == current_dir:  # Reached the root directory
-            raise RuntimeError(f"Could not find the directory {target_dir_name} in the path hierarchy.")
-        
-        current_dir = parent_dir
-        
 
 
 # Call the function
-add_project_root_to_sys_path()
-
-
-
-
 import cv2
 import numpy as np
 import pandas as pd
