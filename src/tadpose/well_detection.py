@@ -1,29 +1,29 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║  TadPose — well_detection                                      ║
-# ║  « finding 24 needles in a Hough-stack »                       ║
+# ║  TadPose — well_detection                                        ║
+# ║  « finding 24 needles in a Hough-stack »                         ║
 # ╠══════════════════════════════════════════════════════════════════╣
-# ║  Detect, correct, and localise the 24 circular wells in a      ║
-# ║  multi-well plate image.  Corrects for lens distortion via      ║
-# ║  eigenvector alignment and central-well interpolation.          ║
-# ║                                                                 ║
-# ║  Rewritten from FrameSplitter.py (A.R.H. Matthews, 2024).      ║
-# ║                                                                 ║
-# ║  Bugs fixed                                                     ║
-# ║  ──────────                                                     ║
-# ║  • corner_indecies was undefined → NameError crash in           ║
-# ║    is_orientation_correct.  Now CORNER_INDICES constant.        ║
-# ║  • find_circles returned unbound local when HoughCircles        ║
-# ║    yielded None.                                                ║
-# ║  • is_orientation_correct had 80 lines of copy-paste for        ║
-# ║    four corners → collapsed to a vectorised loop.               ║
-# ║  • find_24 had independent if-blocks for <24 and >30 that      ║
-# ║    could both fire on the same iteration → elif chain.          ║
-# ║                                                                 ║
-# ║  Performance                                                    ║
-# ║  ───────────                                                    ║
-# ║  • adjacent-distance calculation vectorised via np.diff         ║
-# ║  • top-left corners vectorised via np.clip on arrays            ║
-# ║  • grid interpolation vectorised via np.meshgrid                ║
+# ║  Detect, correct, and localise the 24 circular wells in a        ║
+# ║  multi-well plate image.  Corrects for lens distortion via       ║
+# ║  eigenvector alignment and central-well interpolation.           ║
+# ║                                                                  ║
+# ║  Rewritten from FrameSplitter.py (A.R.H. Matthews, 2024).        ║
+# ║                                                                  ║
+# ║  Bugs fixed                                                      ║
+# ║  ──────────                                                      ║
+# ║  • corner_indecies was undefined → NameError crash in            ║
+# ║    is_orientation_correct.  Now CORNER_INDICES constant.         ║
+# ║  • find_circles returned unbound local when HoughCircles         ║
+# ║    yielded None.                                                 ║
+# ║  • is_orientation_correct had 80 lines of copy-paste for         ║
+# ║    four corners → collapsed to a vectorised loop.                ║
+# ║  • find_24 had independent if-blocks for <24 and >30 that        ║
+# ║    could both fire on the same iteration → elif chain.           ║
+# ║                                                                  ║
+# ║  Performance                                                     ║
+# ║  ───────────                                                     ║
+# ║  • adjacent-distance calculation vectorised via np.diff          ║
+# ║  • top-left corners vectorised via np.clip on arrays             ║
+# ║  • grid interpolation vectorised via np.meshgrid                 ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
 from __future__ import annotations
@@ -202,9 +202,9 @@ class WellDetector:
         )
         self.detection_ok = True
 
-    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
-    # « public: cropping »
-    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈─
+    # « public: cropping » 
+    # ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈─
 
     def crop_well(
         self,

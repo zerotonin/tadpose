@@ -1,34 +1,34 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║  TadPose — feature_extraction                                  ║
-# ║  « turning wiggly pixels into thrust, yaw, and posture »       ║
+# ║  TadPose — feature_extraction                                    ║
+# ║  « turning wiggly pixels into thrust, yaw, and posture »         ║
 # ╠══════════════════════════════════════════════════════════════════╣
-# ║  Extract body-centric velocity (thrust, yaw, slip) and         ║
-# ║  frons-aligned posture from DeepLabCut tracking output.        ║
-# ║                                                                 ║
-# ║  Rewritten from Velocity_and_Posture_Extractor.py              ║
-# ║  (A.R.H. Matthews, 2024).                                      ║
-# ║                                                                 ║
-# ║  Bugs fixed                                                     ║
-# ║  ──────────                                                     ║
-# ║  • get_frons() docstring was a copy-paste of adjust_eyes()     ║
-# ║  • duplicate `import pandas as pd`                              ║
-# ║  • sys.path.append hack for imports                             ║
-# ║                                                                 ║
-# ║  Performance                                                    ║
-# ║  ───────────                                                    ║
-# ║  Every function that previously used a Python loop over         ║
-# ║  6×10^7 rows is now fully vectorised with numpy.  The old      ║
-# ║  transform_tadpole() had a double-nested loop (frames × body   ║
-# ║  parts); the new align_posture() does the same work in a       ║
-# ║  single broadcast rotation on a (N, P, 2) array.               ║
-# ║                                                                 ║
-# ║  Removed                                                        ║
-# ║  ───────                                                        ║
-# ║  • extract_xy_vectors() — replaced by array indexing            ║
-# ║  • get_2d_rotation_matrix() — inlined into vectorised rotation  ║
-# ║  • scale_to_unit_vectors_and_align_eyes() — unused dead code    ║
-# ║  • bone-length validation (was commented out in caller)         ║
-# ║  • FileManager coupling (scaling params now explicit args)      ║
+# ║  Extract body-centric velocity (thrust, yaw, slip) and           ║
+# ║  frons-aligned posture from DeepLabCut tracking output.          ║
+# ║                                                                  ║
+# ║  Rewritten from Velocity_and_Posture_Extractor.py                ║
+# ║  (A.R.H. Matthews, 2024).                                        ║
+# ║                                                                  ║
+# ║  Bugs fixed                                                      ║
+# ║  ──────────                                                      ║
+# ║  • get_frons() docstring was a copy-paste of adjust_eyes()       ║
+# ║  • duplicate `import pandas as pd`                               ║
+# ║  • sys.path.append hack for imports                              ║
+# ║                                                                  ║
+# ║  Performance                                                     ║
+# ║  ───────────                                                     ║
+# ║  Every function that previously used a Python loop over          ║
+# ║  6×10^7 rows is now fully vectorised with numpy.  The old        ║
+# ║  transform_tadpole() had a double-nested loop (frames × body     ║
+# ║  parts); the new align_posture() does the same work in a         ║
+# ║  single broadcast rotation on a (N, P, 2) array.                 ║
+# ║                                                                  ║
+# ║  Removed                                                         ║
+# ║  ───────                                                         ║
+# ║  • extract_xy_vectors() — replaced by array indexing             ║
+# ║  • get_2d_rotation_matrix() — inlined into vectorised rotation   ║
+# ║  • scale_to_unit_vectors_and_align_eyes() — unused dead code     ║
+# ║  • bone-length validation (was commented out in caller)          ║
+# ║  • FileManager coupling (scaling params now explicit args)       ║
 # ╚══════════════════════════════════════════════════════════════════╝
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ def compute_com(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Velocity decomposition  « thrust, yaw, slip »               │
+# │ Velocity decomposition  « thrust, yaw, slip »                │
 # └──────────────────────────────────────────────────────────────┘
 
 def compute_yaw(
@@ -250,7 +250,7 @@ def compute_velocity(
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Posture alignment  « frons at origin, tail-base on x-axis » │
+# │ Posture alignment  « frons at origin, tail-base on x-axis »  │
 # └──────────────────────────────────────────────────────────────┘
 
 def align_posture(
