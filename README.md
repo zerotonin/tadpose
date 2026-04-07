@@ -10,7 +10,8 @@ models of developmental and epileptic encephalopathies (DEE).
 
 > This pipeline was developed at the Department of Zoology, University
 > of Otago.  Early development took place under
-> [alexrhmatthews/tadpole_wells](https://github.com/alexrhmatthews/tadpole_wells);
+> [alexrhmatthews/tadpole_wells](https://github.com/alexrhmatthews/tadpole_wells) and
+> [zerotonin/24well_pipe](https://github.com/zerotonin/24well_pipe);
 > the codebase was reorganised and renamed to TadPose for publication.
 
 ## Pipeline overview
