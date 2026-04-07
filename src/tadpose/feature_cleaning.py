@@ -1,188 +1,183 @@
-import pandas as pd
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — feature_cleaning                                    ║
+# ║  « scrubbing artefacts from 6×10^7 observations »              ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Remove tracking artefacts by applying distribution-based       ║
+# ║  thresholds to velocity and posture features.  Boundaries       ║
+# ║  derived from logarithmic histogram inspection of rare non-     ║
+# ║  linearities (thesis Appendix A).                               ║
+# ║                                                                 ║
+# ║  Rewritten from clean_features.py (A.R.H. Matthews, 2024).     ║
+# ║  Removed interactive input() menus and module-level script      ║
+# ║  execution.  Kept Appendix A boundaries as the default.         ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
 import numpy as np
-import matplotlib.pyplot as plt
-import json
-import os
-from tabulate import tabulate
+import pandas as pd
+from numpy.typing import NDArray
 
-def plot_histograms(raw_dataview_data, save_folder):
-    num_features = raw_dataview_data.shape[1]
-    
-    # Plot histograms
-    fig, axes = plt.subplots(num_features, 1, figsize=(10, 5 * num_features))
-    for i, feature in enumerate(raw_dataview_data.columns):
-        ax = axes[i] if num_features > 1 else axes
-        data = raw_dataview_data[feature].replace(0, np.nan).dropna()  # Replace 0 with NaN and drop them for log scale
-        ax.hist(data, bins=30, log=True)
-        ax.set_title(f'Logarithmic Histogram of {feature}')
-        ax.set_xlabel(feature)
-        ax.set_ylabel('Frequency')
 
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_folder, 'raw_feature_histograms_more_rigorous.png'))
-    plt.close()
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Default boundaries  « thesis Appendix A, Table A.1 »         │
+# │                                                              │
+# │ None = no bound on that side.  Values in mm or mm/s for      │
+# │ velocity features, normalised body-length units for posture. │
+# └──────────────────────────────────────────────────────────────┘
 
-def load_cleaning_info(csv_path):
-    json_path = os.path.splitext(csv_path)[0] + '_datacleaning_info_more_rigorous.json'
-    if os.path.exists(json_path):
-        with open(json_path, 'r') as file:
-            return json.load(file)
-    return {}
+DEFAULT_BOUNDARIES: dict[str, tuple[Optional[float], Optional[float]]] = {
+    # « velocity »
+    "thrust_mm_s":       (-400.0,  400.0),
+    "slip_mm_s":         (-400.0,  400.0),
+    # « posture: eyes (tightly constrained by normalisation) »
+    "left_eye_x":        ( -25.0,   25.0),
+    "left_eye_y":        ( -15.0,   15.0),
+    "right_eye_x":       ( -25.0,   25.0),
+    "right_eye_y":       ( -15.0,   15.0),
+    # « posture: tail (progressively wider toward tip) »
+    "tail_base_x":       (  None,   30.0),
+    "tail_1_x":          ( -25.0,   50.0),
+    "tail_1_y":          ( -25.0,   25.0),
+    "tail_2_x":          ( -40.0,   55.0),
+    "tail_2_y":          ( -50.0,   50.0),
+    "tail_3_x":          ( -50.0,  100.0),
+    "tail_3_y":          (  None,   None),
+    "tail_end_x":        (  None,   80.0),
+    "tail_end_y":        (-100.0,  100.0),
+    # « posture dynamics: eyes »
+    "left_eye_x_diff":   ( -20.0,   20.0),
+    "left_eye_y_diff":   ( -75.0,   75.0),
+    "right_eye_x_diff":  ( -20.0,   20.0),
+    "right_eye_y_diff":  ( -75.0,   75.0),
+    # « posture dynamics: tail base »
+    "tail_base_x_diff":  ( -15.0,   15.0),
+    # « posture dynamics: tail segments »
+    "tail_1_x_diff":     (-100.0,  100.0),
+    "tail_1_y_diff":     (-100.0,  100.0),
+    "tail_2_x_diff":     (-100.0,  100.0),
+    "tail_2_y_diff":     (-100.0,  100.0),
+    "tail_3_x_diff":     (-100.0,  100.0),
+    "tail_3_y_diff":     (-100.0,  100.0),
+    # « posture dynamics: tail tip (widest bounds) »
+    "tail_end_x_diff":   (-100.0,  100.0),
+    "tail_end_y_diff":   (-150.0,  150.0),
+}
 
-def save_cleaning_info(csv_path, cleaning_info, removed_idx):
-    json_path = os.path.splitext(csv_path)[0] + '_datacleaning_more_rigorous_info.json'
-    info = {
-        'cleaning_info': cleaning_info,
-        'removed_idx': removed_idx
-    }
-    with open(json_path, 'w') as file:
-        json.dump(info, file)
 
-def clean_data(raw_dataview_data, cleaning_info):
-    removed_idx = []
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Cleaning  « apply bounds, report what was dropped »          │
+# └──────────────────────────────────────────────────────────────┘
 
-    for feature, bounds in cleaning_info.items():
-        lower_bound, upper_bound = bounds
-        if lower_bound is not None:
-            idx_to_remove = raw_dataview_data.index[raw_dataview_data[feature] < lower_bound].tolist()
-            removed_idx.extend(idx_to_remove)
-        if upper_bound is not None:
-            idx_to_remove = raw_dataview_data.index[raw_dataview_data[feature] > upper_bound].tolist()
-            removed_idx.extend(idx_to_remove)
+def clean_features(
+    data: pd.DataFrame,
+    boundaries: Optional[dict[str, tuple[Optional[float], Optional[float]]]] = None,
+) -> tuple[pd.DataFrame, list[int]]:
+    """Remove rows where any feature falls outside its boundary.
 
-    cleaned_data = raw_dataview_data.drop(index=removed_idx).reset_index(drop=True)
-    return cleaned_data, removed_idx
+    Args:
+        data:       DataFrame with feature columns.
+        boundaries: Dict mapping column names to (lower, upper) bounds.
+                    None on either side means no bound.  Defaults to
+                    DEFAULT_BOUNDARIES (thesis Appendix A).
 
-def apply_hardcoded_boundaries(data):
+    Returns:
+        (cleaned DataFrame with reset index,
+         list of original row indices that were removed).
     """
-    Apply hardcoded boundaries to clean data for each feature in the provided DataFrame.
+    if boundaries is None:
+        boundaries = DEFAULT_BOUNDARIES
+
+    bad_mask = np.zeros(len(data), dtype=bool)
+
+    for feature, (lo, hi) in boundaries.items():
+        if feature not in data.columns:
+            continue
+        col = data[feature].values
+        if lo is not None:
+            bad_mask |= col < lo
+        if hi is not None:
+            bad_mask |= col > hi
+
+    removed_idx = data.index[bad_mask].tolist()
+    cleaned = data.loc[~bad_mask].reset_index(drop=True)
+    return cleaned, removed_idx
+
+
+def clean_features_from_array(
+    data: NDArray[np.floating],
+    feature_names: list[str],
+    boundaries: Optional[dict[str, tuple[Optional[float], Optional[float]]]] = None,
+) -> tuple[NDArray[np.floating], NDArray[np.intp]]:
+    """Clean a numpy array using feature name lookup.
+
+    Convenience wrapper for use with .npy clustering matrices.
+
+    Args:
+        data:          (N, F) feature matrix.
+        feature_names: Length-F list of column names matching *boundaries*.
+        boundaries:    As in clean_features.
+
+    Returns:
+        (cleaned array, boolean mask of kept rows).
     """
-    # Define hardcoded boundaries
-    boundaries = {
-        'thrust_mm_s': (-400.0, 400.0),
-        'slip_mm_s': (-400.0, 400.0),
-        'left_eye_x': (-25.0, 25.0),
-        'left_eye_y': (-15.0, 15.0),
-        'right_eye_x': (-25.0, 25.0),
-        'right_eye_y': (-15.0, 15.0),
-        'tail_base_x': (None, 30.0),
-        'tail_1_x': (-25.0, 50.0),
-        'tail_1_y': (-25.0, 25.0),
-        'tail_2_x': (-40.0, 55.0),
-        'tail_2_y': (-50.0, 50.0),
-        'tail_3_x': (-50.0, 100.0),
-        'tail_3_y': (None, None),
-        'tail_end_x': (None, 80.0),
-        'tail_end_y': (-100.0, 100.0),
-        'left_eye_x_diff': (-20.0, 20.0),
-        'left_eye_y_diff': (-75.0, 75.0),
-        'right_eye_x_diff': (-20.0, 20.0),
-        'right_eye_y_diff': (-75.0, 75.0),
-        'tail_base_x_diff': (-15, 15),
-        'tail_1_x_diff': (-100.0, 100.0),
-        'tail_1_y_diff': (-100.0, 100.0),
-        'tail_2_x_diff': (-100.0, 100.0),
-        'tail_2_y_diff': (-100.0, 100.0),
-        'tail_3_x_diff': (-100.0, 100.0),
-        'tail_3_y_diff': (-100.0, 100.0),
-        'tail_end_x_diff': (-100.0, 100.0),
-        'tail_end_y_diff': (-150.0, 150.0)
-    }
-    
-    removed_indices = []
+    if boundaries is None:
+        boundaries = DEFAULT_BOUNDARIES
 
-    # Apply boundaries to each feature
-    for feature, (lower_bound, upper_bound) in boundaries.items():
-        if feature in data.columns:
-            if lower_bound is not None:
-                to_remove = data.index[data[feature] < lower_bound].tolist()
-                removed_indices.extend(to_remove)
-            if upper_bound is not None:
-                to_remove = data.index[data[feature] > upper_bound].tolist()
-                removed_indices.extend(to_remove)
-    
-    # Remove duplicates from removed_indices and sort them
-    removed_indices = sorted(set(removed_indices))
-    
-    # Create a cleaned version of the data
-    cleaned_data = data.drop(index=removed_indices).reset_index(drop=True)
-    
-    return cleaned_data, removed_indices
+    keep = np.ones(data.shape[0], dtype=bool)
 
-def get_bounds_from_user(feature):
-    while True:
-        lower_bound = input(f"Enter lower bound for {feature} (or type 'n' for no lower bound): ")
-        if lower_bound.lower() == 'n':
-            lower_bound = None
-            break
-        try:
-            lower_bound = float(lower_bound)
-            break
-        except ValueError:
-            print("Invalid input. Please enter a number or 'n'.")
-    
-    while True:
-        upper_bound = input(f"Enter upper bound for {feature} (or type 'n' for no upper bound): ")
-        if upper_bound.lower() == 'n':
-            upper_bound = None
-            break
-        try:
-            upper_bound = float(upper_bound)
-            break
-        except ValueError:
-            print("Invalid input. Please enter a number or 'n'.")
-    
-    return lower_bound, upper_bound
+    for j, name in enumerate(feature_names):
+        if name not in boundaries:
+            continue
+        lo, hi = boundaries[name]
+        if lo is not None:
+            keep &= data[:, j] >= lo
+        if hi is not None:
+            keep &= data[:, j] <= hi
 
-def main():
-    csv_path = input("Enter the path to the CSV file: ")
-    save_folder = input("Enter the folder where you want to save the histogram: ")
+    return data[keep], np.where(keep)[0]
 
-    raw_dataview_data = pd.read_csv(csv_path)
-    plot_histograms(raw_dataview_data, save_folder)
 
-    # Ask user if they want to use hardcoded boundaries
-    use_hardcoded = input("Do you want to use hardcoded boundaries? (y/n): ").lower()
-    
-    if use_hardcoded == 'y':
-        # Use hardcoded boundaries
-        cleaned_data, removed_idx = apply_hardcoded_boundaries(raw_dataview_data)
-    else:
-        # Use user-defined boundaries
-        cleaning_info = load_cleaning_info(csv_path)
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Diagnostics  « log-scale histograms per feature »            │
+# └──────────────────────────────────────────────────────────────┘
 
-        while True:
-            print("\nFeature Cleaning Menu:")
-            table_data = [["Feature", "Lower Bound", "Upper Bound"]]
-            table_data.append(["0. No more features to clean", "", ""])
-            for i, feature in enumerate(raw_dataview_data.columns):
-                lower, upper = cleaning_info.get(feature, (None, None))
-                table_data.append([f"{i + 1}. {feature}", lower if lower is not None else "", upper if upper is not None else ""])
-            print(tabulate(table_data, headers="firstrow", tablefmt="grid"))
+def plot_feature_histograms(
+    data: pd.DataFrame,
+    output_path: Path,
+    *,
+    bins: int = 50,
+) -> None:
+    """Save a multi-panel figure of log-scale histograms per feature.
 
-            try:
-                choice = int(input("Select a feature to clean (by number): "))
-            except ValueError:
-                print("Invalid input. Please enter a number.")
-                continue
+    Useful for visually identifying artefact tails to set cleaning
+    thresholds.
 
-            if choice == 0:
-                break
-            elif 1 <= choice <= len(raw_dataview_data.columns):
-                feature = raw_dataview_data.columns[choice - 1]
-                if feature in cleaning_info:
-                    print(f"Current bounds for {feature}: {cleaning_info[feature]}")
-                lower_bound, upper_bound = get_bounds_from_user(feature)
-                cleaning_info[feature] = (lower_bound, upper_bound)
-            else:
-                print("Invalid choice. Please try again.")
+    Args:
+        data:        DataFrame with feature columns.
+        output_path: Where to save the figure (PNG/SVG).
+        bins:        Histogram bin count.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
-        cleaned_data, removed_idx = clean_data(raw_dataview_data, cleaning_info)
-        save_cleaning_info(csv_path, cleaning_info, removed_idx)
+    output_path = Path(output_path)
+    n_features = data.shape[1]
 
-    # Save the cleaned data
-    cleaned_data.to_csv(os.path.splitext(csv_path)[0] + '_cleaned_more_rigorous.csv', index=False)
-    print(f"Data cleaned and saved to {os.path.splitext(csv_path)[0] + '_cleaned_more_rigorous.csv'}")
+    fig, axes = plt.subplots(n_features, 1, figsize=(10, 4 * n_features))
+    if n_features == 1:
+        axes = [axes]
 
-if __name__ == "__main__":
-    main()
+    for ax, col in zip(axes, data.columns):
+        vals = data[col].replace(0, np.nan).dropna()
+        ax.hist(vals, bins=bins, log=True, color="#0072B2", alpha=0.8)
+        ax.set_title(col)
+        ax.set_ylabel("count (log)")
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
