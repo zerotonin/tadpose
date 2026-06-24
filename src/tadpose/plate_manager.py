@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — plate_manager                                         ║
+# ║  « interactive 24-well plate assignment »                        ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Console-driven assignment of well types and tadpole groups      ║
+# ║  across the 24 wells of a plate.                                 ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import os
 from prettytable import PrettyTable
 from sqlalchemy.orm import sessionmaker

@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — centroid_matching                                     ║
+# ║  « align cluster centroids across runs »                         ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Attaches centroid labels to feature rows and computes the       ║
+# ║  average posture before/after a given cluster split.             ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import numpy as np
 import json
 from tqdm import tqdm

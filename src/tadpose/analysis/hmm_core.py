@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — hmm_core                                              ║
+# ║  « transition matrices and preferred-transition tests »          ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Core HMM machinery: empirical transition matrix, a-priori       ║
+# ║  and global-null significance, and the transition figures.       ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import argparse
 from pathlib import Path
 

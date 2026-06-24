@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — cluster_meta                                          ║
+# ║  « clustering-sweep quality metrics and centroids »              ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Summarises a Davies-Bouldin / k sweep: stability, quality       ║
+# ║  scores, and de-z-scored centroid metadata.                      ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import pandas as pd
 import os
 import json

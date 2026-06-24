@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — slurm_jobs                                            ║
+# ║  « build and submit the SLURM pipeline DAG »                     ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Constructs the dependent SLURM job chain (split, track,         ║
+# ║  extract, ingest) for the full per-plate workflow.               ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import subprocess
 import os
 from tadpose.video_info import VideoInfoExtractor

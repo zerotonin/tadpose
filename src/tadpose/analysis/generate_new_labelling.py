@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — generate_new_labelling                                ║
+# ║  « fold raw cluster ids into agglomerated categories »           ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Maps per-frame cluster labels onto agglomerated behavioural     ║
+# ║  categories defined by cluster-map JSON files.                   ║
+# ╚══════════════════════════════════════════════════════════════════╝
 from __future__ import annotations
 
 import argparse

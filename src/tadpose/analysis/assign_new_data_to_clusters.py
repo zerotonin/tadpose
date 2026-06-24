@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — assign_new_data_to_clusters                           ║
+# ║  « label new feature rows by nearest centroid »                  ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Assigns each z-scored feature row to the closest cluster        ║
+# ║  centroid (Euclidean) and saves the label array.                 ║
+# ╚══════════════════════════════════════════════════════════════════╝
 from __future__ import annotations
 
 import argparse

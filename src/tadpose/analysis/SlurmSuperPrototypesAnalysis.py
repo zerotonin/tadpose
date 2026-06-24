@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — SlurmSuperPrototypesAnalysis                          ║
+# ║  « per-trial superprototype extraction (SLURM task) »            ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Counts behavioural-motif chains (superprototypes) for one       ║
+# ║  trial; one SLURM array task per trial.                          ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import os
 import pandas as pd
 import numpy as np

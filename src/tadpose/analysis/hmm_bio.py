@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — hmm_bio                                               ║
+# ║  « grouped HMM comparison across conditions »                    ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Builds and plots transition HMMs per experimental group         ║
+# ║  (PTZ dose series, 4-AP, neurod2) for biological comparison.     ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import os
 from pathlib import Path
 

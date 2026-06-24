@@ -1,3 +1,10 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  TadPose — file_manager                                          ║
+# ║  « output paths and metadata file conventions »                  ║
+# ╠══════════════════════════════════════════════════════════════════╣
+# ║  Central owner of the per-run output directory layout and the    ║
+# ║  metadata CSV/JSON file locations.                               ║
+# ╚══════════════════════════════════════════════════════════════════╝
 import os
 import json
 from pathlib import Path
