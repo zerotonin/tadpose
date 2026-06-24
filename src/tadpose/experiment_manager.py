@@ -1,4 +1,4 @@
-from database.TadpoleDatabase import *
+from tadpose.database import *
 from prettytable import PrettyTable
 import os
 

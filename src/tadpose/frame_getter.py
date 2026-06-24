@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from database.TadpoleDatabase import TimeSeries, Trial, Video, DatabaseHandler, Trajectory
+from tadpose.database import TimeSeries, Trial, Video, DatabaseHandler, Trajectory
 import re
 
 class TadpoleFrameExtractor:

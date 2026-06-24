@@ -1,7 +1,7 @@
 import os
 from prettytable import PrettyTable
 from sqlalchemy.orm import sessionmaker
-from database.TadpoleDatabase import*
+from tadpose.database import *
 from datetime import datetime
 class PlateManager:
     def __init__(self, db_handler):

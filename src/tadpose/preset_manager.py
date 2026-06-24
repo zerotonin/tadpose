@@ -1,7 +1,7 @@
 import os
 import json
 import pandas as pd
-from manager_classes.FileManager import FileManager
+from tadpose.file_manager import FileManager
 
 class PresetManager:
     def init(self):

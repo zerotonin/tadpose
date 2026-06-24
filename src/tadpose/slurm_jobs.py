@@ -1,6 +1,6 @@
 import subprocess
 import os
-from video_preprocessing.VideoInfoExtractor import VideoInfoExtractor
+from tadpose.video_info import VideoInfoExtractor
 
 class SlurmJobManager:
     def __init__(self, file_manager,meta_data_table,gpu_partition = 'aoraki_gpu'):

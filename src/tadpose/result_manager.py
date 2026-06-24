@@ -8,8 +8,8 @@ import pandas as pd
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-from database.TadpoleDatabase import *
-from manager_classes.FileManager import FileManager
+from tadpose.database import *
+from tadpose.file_manager import FileManager
 from tqdm import tqdm
 
 
