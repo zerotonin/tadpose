@@ -45,6 +45,23 @@ conda activate tadpose
 pip install -e .
 ```
 
+### Configure machine-specific paths (required first step)
+
+TadPose hard-codes no absolute paths.  Every data root, interpreter, and
+HPC setting is read from a gitignored `local_paths.json`, resolved against
+the committed template.  Copy it and edit the `local` profile (and, on the
+cluster, the `hpc` profile) **before running anything**:
+
+```bash
+cp local_paths.template.json local_paths.json
+# then edit local_paths.json: set data_root, code_root, python_interpreter, …
+```
+
+Resolution order for the data root: `$TADPOSE_DATA_ROOT` → the active
+profile's `data_root` in `local_paths.json` → an in-repo `data/` symlink.
+A missing `local_paths.json` fails loudly and names the template to copy.
+SLURM submit scripts read the same file via `slurm/load_paths.sh`.
+
 ## Citation
 
 If you use TadPose in your research, please cite:
