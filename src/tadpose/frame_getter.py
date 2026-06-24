@@ -109,38 +109,4 @@ class TadpoleFrameExtractor:
         print("Image pairs created successfully.")
         return image_arrays, frame_number_arrays
 
-
-# def main():
-#     # Your configuration
-#     data_csv_file = '/projects/sciences/zoology/geurten_lab/tadpole_project/databases/aug13_export/aug_13_database_export_with_bp_diff_FAST_cleaned.csv'
-#     ids_from_np_data = [(11, 12), (21, 23)]
-#     db_path = '/projects/sciences/zoology/geurten_lab/tadpole_project/databases/tadpole_db_july_24'
-#     base_video_dir = '/projects/sciences/zoology/geurten_lab/tadpole_project/pipeline_outputs'
-
-#     # Instantiate the TadpoleFrameExtractor class
-#     extractor = TadpoleFrameExtractor(data_csv_file, ids_from_np_data, db_path, base_video_dir)
-
-
-#     # Extract frames and create image arrays
-#     image_arrays = extractor.extract_and_create_images()
-
-#     # Now you can do whatever you need with image_arrays, like displaying them in a figure
-    
-#     print("got image arrays, now printing ")
-    
-#     import matplotlib.pyplot as plt
-
-#     fig, axs = plt.subplots(1, len(image_arrays), figsize=(15, 5))
-
-#     for i, img_array in enumerate(image_arrays):
-#         axs[i].imshow(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
-#         axs[i].axis('off')
-
-#     plt.savefig('/projects/sciences/zoology/geurten_lab/tadpole_project/test_outputs/tadpole_images.png')
-#     plt.close
-
-
-# if __name__ == "__main__":
-#     main()
-
 # print("Frames saved successfully.")

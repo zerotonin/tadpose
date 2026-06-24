@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from scipy.stats import binom
@@ -7,6 +9,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 import networkx as nx
+
+from tadpose import config
 
 def plot_above_transitions(tadpole_hmm, ax=None):
     transition_probs = tadpole_hmm.get_transition_probabilities()
@@ -352,13 +356,9 @@ class TadpoleHMMGroupAnalysis:
 
 
 
-# Initialize the analysis with your CSV file
-csv_file_path = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/sep_18_k_36/sep18_davies_bouldin_cleaned_tail_base_x_tadpole_ids_trial_ids_well_type_ids_and_labels.csv'
-
-output_directory = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/sep_18_k_36/comparion_of_groups_plots/agglom_7_plots'
-
-# Define your group categories with nested criteria and labels
-group_categories = {
+# Example group definitions for the PTZ / 4-AP / neurod2 experiments.
+# Criteria are matched against the labelled CSV; not machine-specific.
+EXAMPLE_GROUP_CATEGORIES = {
     'PTZ_rep_1': {
         'criteria': [
             {'well_type_id': 1, 'tadpole_id': [12, 13], 'trial_id_range': [457, 480]},
@@ -407,8 +407,23 @@ group_categories = {
 }
 
 
-hmm_analysis = TadpoleHMMGroupAnalysis(csv_file_path)
+def _main() -> None:
+    """CLI: run grouped HMM comparisons and save the per-category figures."""
+    import argparse
 
-hmm_analysis.plot_and_save_hmms(group_categories, output_directory)
+    root = config.data_root() / "cluster_analysis"
+    parser = argparse.ArgumentParser(description="Grouped HMM comparison.")
+    parser.add_argument("--csv-file", type=Path,
+                        default=root / "tadpole_ids_trial_ids_well_type_ids_and_labels.csv",
+                        help="Labelled per-frame CSV with id columns.")
+    parser.add_argument("--output-dir", type=Path,
+                        default=root / "comparison_of_groups_plots",
+                        help="Base directory for the per-category figures.")
+    args = parser.parse_args()
 
-# Generate and save HMM plots for different groups
+    hmm_analysis = TadpoleHMMGroupAnalysis(str(args.csv_file))
+    hmm_analysis.plot_and_save_hmms(EXAMPLE_GROUP_CATEGORIES, str(args.output_dir))
+
+
+if __name__ == "__main__":
+    _main()

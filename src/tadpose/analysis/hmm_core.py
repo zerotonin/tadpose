@@ -1,16 +1,16 @@
-import os
+import argparse
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from scipy.stats import binom
 from statsmodels.stats.multitest import multipletests
 import seaborn as sns
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.colors import LogNorm
 import networkx as nx
 
-import networkx as nx
-import matplotlib.pyplot as plt
+from tadpose import config
 
 def plot_above_transitions(tadpole_hmm, ax=None):
     """Plots a directed graph showing only significant above-average transitions with color-coded nodes and labels inside.
@@ -253,26 +253,31 @@ class tadpoleHMM:
     def get_preferred_transitions(self):
         return self.preferred_transitions
 
-# Example usage:
-# tadpole_hmm = tadpoleHMM('/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/agglom_3_and_7_aug21_davies_bouldin_20to40_tadpole_ids_and_labels.csv')
-tadpole_hmm = tadpoleHMM("/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/PTZ_assignment/sep_12_multi_ptz_amounts_tadpole_ids_trial_ids_well_type_ids_and_labels.npy")
+def _main() -> None:
+    """CLI: build an HMM from a label array and save the transition figures."""
+    root = config.data_root() / "cluster_analysis"
+    parser = argparse.ArgumentParser(description="HMM transition analysis.")
+    parser.add_argument("--labels", type=Path,
+                        default=root / "tadpole_ids_trial_ids_well_type_ids_and_labels.npy",
+                        help="Label array (.npy) or labelled CSV.")
+    parser.add_argument("--output-dir", type=Path,
+                        default=root / "figures_HMM",
+                        help="Directory for the transition figures.")
+    args = parser.parse_args()
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
-tadpole_hmm.process_data()
-transition_probabilities = tadpole_hmm.get_transition_probabilities()
-preferred_transitions = tadpole_hmm.get_preferred_transitions()
-fig1 = plot_transition_matrix(tadpole_hmm)
-fig2 = plot_above_transitions(tadpole_hmm)
-fig3 = plot_threshold_transitions(tadpole_hmm)
-
-figure_info = [ (fig1,'transition_mat'),(fig2,'above_apriori_states'),(fig3,'above_global_null')]
-
-for fig, name in figure_info:
-    for extension in ('png','svg'):
-        # fig.savefig(f'/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/figures_HMM_agglom_3/{name}.{extension}')
-        fig.savefig(f'/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/figures_HMM_agglom_3/{name}.{extension}')
-    
+    tadpole_hmm = tadpoleHMM(str(args.labels))
+    tadpole_hmm.process_data()
+    figures = [
+        (plot_transition_matrix(tadpole_hmm), "transition_mat"),
+        (plot_above_transitions(tadpole_hmm), "above_apriori_states"),
+        (plot_threshold_transitions(tadpole_hmm), "above_global_null"),
+    ]
+    for fig, name in figures:
+        for extension in ("png", "svg"):
+            fig.savefig(args.output_dir / f"{name}.{extension}")
+    print("done")
 
 
-plt.show()
-
-print('done')
+if __name__ == "__main__":
+    _main()

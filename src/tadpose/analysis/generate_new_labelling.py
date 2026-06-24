@@ -1,8 +1,14 @@
+from __future__ import annotations
 
+import argparse
+import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import json
+
+from tadpose import config
+
 
 def add_clustering_labels(npy_filepath, json_filepaths, output_filepath, new_label_column_names):
     """
@@ -39,32 +45,36 @@ def add_clustering_labels(npy_filepath, json_filepaths, output_filepath, new_lab
     df.to_csv(output_filepath, index=False)
     print(f"DataFrame saved with new columns at {output_filepath}")
 
-# User-defined parameters
-# npy_filepath = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/aug21_davies_bouldin_20to40_tadpole_ids_trial_ids_well_type_ids_and_labels.npy'
-# npy_filepath = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/PTZ_assignment/sep_12_multi_ptz_amounts_tadpole_ids_trial_ids_well_type_ids_and_labels.npy'
-# json_filepaths = [
-#     '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/cluster_maps/cluster_map_3.json',
-#     '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/cluster_maps/cluster_map_7.json'
-# ]  # Replace with your JSON file paths
-# new_label_column_names = ['agglom_3', 'agglom_7']  # Replace with your desired column names
-# # output_filepath = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/agglom_3_and_7_aug21_davies_bouldin_20to40_tadpole_ids_and_labels.csv'  # Replace with your desired output path
-# output_filepath = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/PTZ_assignment/sep_12_multi_ptz_amounts_tadpole_ids_trial_ids_well_type_ids_and_labels.csv'  # Replace with your desired output path
 
-# # Call the method
-# add_clustering_labels(npy_filepath, json_filepaths, output_filepath, new_label_column_names)
+def _main() -> None:
+    """CLI: fold raw cluster labels into agglomerated category columns.
 
-npy_filepath = "/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/sep_18_k_36/sep18_davies_bouldin_cleaned_tail_base_x_tadpole_ids_trial_ids_well_type_ids_and_labels.npy"
-json_filepaths = [
-    '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/sep_18_k_36/cluster_maps/cluster_map_4.json',
-    '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/sep_18_k_36/cluster_maps/cluster_map_7.json'
-]  # Replace with your JSON file paths
-new_label_column_names = ['agglom_4', 'agglom_7']  # Replace with your desired column names
-# output_filepath = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/agglom_3_and_7_aug21_davies_bouldin_20to40_tadpole_ids_and_labels.csv'  # Replace with your desired output path
-# output_filepath = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/PTZ_assignment/sep_12_multi_ptz_amounts_tadpole_ids_trial_ids_well_type_ids_and_labels.csv'  # Replace with your desired output path
-output_filepath = "/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/sep_18_k_36/sep18_davies_bouldin_cleaned_tail_base_x_tadpole_ids_trial_ids_well_type_ids_and_labels.csv"
+    Defaults follow a layout under ``config.data_root()``; override on the
+    command line for a specific clustering run.
+    """
+    run_dir = config.data_root() / "cluster_analysis"
+    parser = argparse.ArgumentParser(description=add_clustering_labels.__doc__)
+    parser.add_argument("--npy-filepath", type=Path,
+                        default=run_dir / "tadpole_ids_trial_ids_well_type_ids_and_labels.npy",
+                        help="Per-frame label array with id columns.")
+    parser.add_argument("--cluster-maps", type=Path, nargs="+",
+                        default=[run_dir / "cluster_maps" / "cluster_map_4.json",
+                                 run_dir / "cluster_maps" / "cluster_map_7.json"],
+                        help="JSON cluster-map files, one per new column.")
+    parser.add_argument("--column-names", nargs="+",
+                        default=["agglom_4", "agglom_7"],
+                        help="Names for the agglomerated columns.")
+    parser.add_argument("--output-filepath", type=Path,
+                        default=run_dir / "tadpole_ids_and_labels.csv",
+                        help="Destination CSV.")
+    args = parser.parse_args()
+    add_clustering_labels(
+        args.npy_filepath, args.cluster_maps, args.output_filepath, args.column_names
+    )
 
-# Call the method
-add_clustering_labels(npy_filepath, json_filepaths, output_filepath, new_label_column_names)
+
+if __name__ == "__main__":
+    _main()
 
 
 

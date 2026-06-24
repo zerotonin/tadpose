@@ -336,59 +336,40 @@ def write_results_to_jsonFile(feature_labels,centroids,centroids_uf,centroids_nm
         f.write(json_data)
 
 
-# Usage
-directory = '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_results/normcluster_4videos' # change
-analysis = ClusterMetaAnalysis(directory)
-analysis.analyze()
-analysis.save_df(os.path.join(directory,'norm_4_videos_metaData.csv'))
-k= "no_k"
-############# Plot general metrics
-feature_str = columns = [
-    "thrust_mm_s", "slip_mm_s", "yaw_rad_s", 
-    "left_eye_x", "left_eye_y", 
-    "right_eye_x", "right_eye_y", 
-    "tail_base_x", "tail_1_x", "tail_1_y", 
-    "tail_2_x", "tail_2_y", "tail_3_x", 
-    "tail_3_y", "tail_end_x", "tail_end_y"
-]
+def _main() -> None:
+    """CLI: summarise a clustering sweep and save the quality-metric figures."""
+    import argparse
+    from pathlib import Path
+
+    from tadpose import config
+
+    parser = argparse.ArgumentParser(description="Cluster meta-analysis.")
+    parser.add_argument("--directory", type=Path,
+                        default=config.data_root() / "cluster_results" / "normcluster_4videos",
+                        help="Clustering-sweep directory to analyse.")
+    args = parser.parse_args()
+    directory = args.directory
+
+    analysis = ClusterMetaAnalysis(str(directory))
+    analysis.analyze()
+    analysis.save_df(str(directory / "metaData.csv"))
+
+    plotter = ClusterPlotter(analysis.df)
+    fig_list = [
+        plotter.plot_metric("calinski_harabasz_score"),
+        plotter.plot_metric("instability"),
+        plotter.plot_metric("analysis_duration"),
+    ]
+
+    fig_string = ["quality", "instability", "duration"]
+    figures_directory = directory / "figures"
+    figures_directory.mkdir(parents=True, exist_ok=True)
+    for fig, filename in zip(fig_list, fig_string):
+        for ext in ("png", "svg"):
+            fig.savefig(figures_directory / f"{filename}.{ext}")
 
 
-plotter = ClusterPlotter(analysis.df)
-fig_list = list()
-fig_list.append(plotter.plot_metric('calinski_harabasz_score'))  # Plot calinski_harabasz_scor
-fig_list.append(plotter.plot_metric('instability'))  # Plot calinski_harabasz_score
-fig_list.append(plotter.plot_metric('analysis_duration'))  # Plot calinski_harabasz_score
-
-############# Centroid Metrics
-
-# # Load the mu and sigma values
-# k = 14
-# centroids, file_path_to_cens = analysis.find_most_stable_centroids(k,0)
-# mu_sigma_df = pd.read_csv('/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_results/normcluster_4videos/clust_data_muSigma_aug4_4videos.csv')
-# plt.show()
-# print(file_path_to_cens)
-
-# centroids_uf = analysis.de_zscore_centroids(centroids,mu_sigma_df.mu.to_numpy(),mu_sigma_df.sigma.to_numpy())   # makwe a scritp tthat does the xz scoring and saves out a musigma df and dezscoring
-
-# centroids_nmax = analysis.normalize_centroids(centroids_uf)
-# centroids_n  = centroids_uf/k
-# write_results_to_jsonFile(feature_str,centroids,centroids_uf,centroids_nmax,f'{directory}/centroid_label_info.json')
-
-# fig_list.append(plotter.plot_radar_charts(centroids,feature_str))
-# fig_list.append(plotter.plot_radar_charts(centroids_uf,feature_str))
-# fig_list.append(plotter.plot_radar_charts(centroids_nmax,feature_str))
-# fig_list.append(plotter.plot_radar_charts(centroids_n,feature_str))
-
-############# Save Figures
-
-fig_string = ['quality','instability','duration','cen_raw','cen_unfolded','cen_norm2max','cen_norm2phys']
-figures_directory = os.path.join(directory, f"figures_{k}")
-os.makedirs(figures_directory, exist_ok=True)
-for fig, filename in list(zip(fig_list,fig_string)):
-    for ext in ['png','svg']:
-        fig.savefig(f'{figures_directory}/{filename}.{ext}')
-
-
-plt.show()
+if __name__ == "__main__":
+    _main()
 
 

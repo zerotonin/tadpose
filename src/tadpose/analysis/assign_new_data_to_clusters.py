@@ -1,6 +1,14 @@
-import numpy as np
+from __future__ import annotations
+
+import argparse
 import json
+from pathlib import Path
+
+import numpy as np
 from scipy.spatial.distance import cdist
+
+from tadpose import config
+
 
 def assign_clusters_from_numpy(json_input, numpy_input, output_file):
     # Load centroids from JSON file
@@ -22,9 +30,27 @@ def assign_clusters_from_numpy(json_input, numpy_input, output_file):
 
     print(f"Cluster labels assigned and saved to {output_file}")
 
-# Example usage
-json_input = "/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_results/aug21_davies_bouldin_20to40/delSize_0/k_34/aug21_davies_bouldin_20to40_meta_k34_delSize0_delPosP72.json"
-numpy_input = "/projects/sciences/zoology/geurten_lab/tadpole_project/databases/PTZ_trial_data_sep_10_2024_zscored.npy"  # Replace with the actual path to your NumPy data file
-output_file = "/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/PTZ_assignment/cluster_labels.npy"
 
-assign_clusters_from_numpy(json_input, numpy_input, output_file)
+def _main() -> None:
+    """CLI: assign feature rows to the nearest cluster centroid.
+
+    Paths default to a layout under ``config.data_root()`` so nothing
+    machine-specific is hard-coded; override any of them on the command line.
+    """
+    root = config.data_root()
+    parser = argparse.ArgumentParser(description=assign_clusters_from_numpy.__doc__)
+    parser.add_argument("--json-input", type=Path,
+                        default=root / "cluster_results" / "centroids.json",
+                        help="JSON file holding the cluster centroids.")
+    parser.add_argument("--numpy-input", type=Path,
+                        default=root / "databases" / "zscored_features.npy",
+                        help="z-scored feature matrix to assign.")
+    parser.add_argument("--output-file", type=Path,
+                        default=root / "cluster_analysis" / "cluster_labels.npy",
+                        help="Destination .npy for the assigned labels.")
+    args = parser.parse_args()
+    assign_clusters_from_numpy(args.json_input, args.numpy_input, args.output_file)
+
+
+if __name__ == "__main__":
+    _main()

@@ -195,19 +195,3 @@ class CentroidProcessor:
             percentiles[feature] = np.percentile(self.data[:, feature_index], 95)
 
         return percentiles
-
-    # Example usage
-    # data_with_k, data_without_k = processor.get_data_with_and_without_cluster_k(3)
-
-        
-
-
-# # Example usage
-# processor = CentroidProcessor(
-#     '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_results/aug15_posture_diff_and_velocity/delSize_0/k_11/labels/aug15_posture_diff_and_velocity_labels_k11_delSize0_delPosP8.npy', 
-#     '/projects/sciences/zoology/geurten_lab/tadpole_project/databases/aug13_export/aug_13_database_export_with_bp_diff_FAST.npy', 
-#     '/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_results/aug15_posture_diff_and_velocity/delSize_0/k_11/aug15_posture_diff_and_velocity_meta_k11_delSize0_delPosP8.json'
-# )
-# processor.attach_centroid_labels()
-# centroid_means_before, centroid_means_after = processor.calculate_average_positions()
-# print(centroid_means_after)

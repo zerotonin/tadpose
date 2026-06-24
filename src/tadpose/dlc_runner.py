@@ -23,7 +23,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-# For local development, command
-# python3 /home/alexmatthews/PyProjects/tadpole_wells/trajectory_analysis/track_videos.py --video_path="/media/alexmatthews/Beck 07/split_video_module_test/P1000355_well_01.mp4" --output_folder="/home/alexmatthews/data/output_coords" dlc_config_path="/home/alexmatthews/deeplabcut_models/single_tadpole-Bart-2023-11-23/config.yaml"
