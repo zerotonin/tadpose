@@ -49,5 +49,6 @@ def monitor_queue(user_code):
         time.sleep(1)  # Check every second
 
 if __name__ == "__main__":
-    user_code = "matal178"  # Replace with your Slurm user code
+    # Default to the current user; override with $SLURM_USER if set.
+    user_code = os.environ.get("SLURM_USER") or os.environ.get("USER", "")
     monitor_queue(user_code)

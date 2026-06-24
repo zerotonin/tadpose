@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=matal178
+#SBATCH --account=${TADPOSE_ACCOUNT}
 #SBATCH --partition=aoraki_bigmem
 #SBATCH --job-name=superprototypes
 #SBATCH --output=superprototypes_%j.out
@@ -8,19 +8,22 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=64G
 
+# Import machine-specific paths (TADPOSE_* env vars) from local_paths.json
+source "$(dirname "${BASH_SOURCE[0]}")/load_paths.sh" hpc
+
 
 # Variables
 n=5
 num_labs=34
 label_column='label'
 
-python_interpreter="/home/matal178/miniconda3/envs/rapids-24.06/bin/python"
-superprototypes_script="/home/matal178/PyProjects/tadpole_wells/post_clustering_analysis/SlurmSuperPrototypesAnalysis.py"
-aggregate_script="/home/matal178/PyProjects/tadpole_wells/post_clustering_analysis/AggregateSuperPrototypesAnalysis.py"
-input_csv_file="/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/agglom_3_and_7_aug21_davies_bouldin_20to40_tadpole_ids_and_labels.csv"
-processed_csv_file="/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/34_labelling_superprototypes.csv"
-output_path="/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/super_output"
-aggregate_output_h5="/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/aggregate_outputs/aggregate_output_chain_len${n}.h5"
+python_interpreter="${TADPOSE_PYTHON_INTERPRETER}"
+superprototypes_script="${TADPOSE_CODE_ROOT}/post_clustering_analysis/SlurmSuperPrototypesAnalysis.py"
+aggregate_script="${TADPOSE_CODE_ROOT}/post_clustering_analysis/AggregateSuperPrototypesAnalysis.py"
+input_csv_file="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/agglom_3_and_7_aug21_davies_bouldin_20to40_tadpole_ids_and_labels.csv"
+processed_csv_file="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/34_labelling_superprototypes.csv"
+output_path="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/super_output"
+aggregate_output_h5="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/aggregate_outputs/aggregate_output_chain_len${n}.h5"
 
 # List of deer IDs
 trial_ids=($(seq 1 456))

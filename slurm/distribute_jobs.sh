@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=distribute_gpu_jobs
-#SBATCH --account=matal178
+#SBATCH --account=default            # override: sbatch --account=$TADPOSE_ACCOUNT
 #SBATCH --partition=aoraki
 #SBATCH --cpus-per-task=1
 #SBATCH --nodes=1

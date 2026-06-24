@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Import machine-specific paths (TADPOSE_* env vars) from local_paths.json
+source "$(dirname "${BASH_SOURCE[0]}")/load_paths.sh" hpc
+
 ######## CLUSTERING CONFIG #########
 # Order of execution for deletion sizes
 declare -a execution_order=(0 50 25 10)
@@ -50,17 +53,17 @@ echo "Using sequence: ${del_pos_seq[@]}"
 
 
 # Adjusted command for generating filenames without requiring CUDA
-filename_cmd="python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/generate_filename.py"
+filename_cmd="python ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/generate_filename.py"
 
 # Base command structure for clustering, requiring CUDA
-base_cmd="~/miniconda3/envs/rapids-24.06/bin/python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/clustering_script.py"
+base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/clustering_script.py"
 
 # Root directory for data and results
-data_file="/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_data/normcluster_data_3_videos.npy"
-result_dir="/projects/sciences/zoology/geurten_lab/tadpole_project/cluster_results"
+data_file="${TADPOSE_DATA_ROOT}/cluster_data/normcluster_data_3_videos.npy"
+result_dir="${TADPOSE_DATA_ROOT}/cluster_results"
 
 # SLURM job parameters for readability, updated partition
-slurm_params="--account=matal178 --partition=$partition --nodes=1 --ntasks-per-node=1 --gpus-per-task=1 --mem=64GB"
+slurm_params="--account=${TADPOSE_ACCOUNT} --partition=$partition --nodes=1 --ntasks-per-node=1 --gpus-per-task=1 --mem=64GB"
 
 # Iterate based on the predefined order
 for del_size in "${execution_order[@]}"; do

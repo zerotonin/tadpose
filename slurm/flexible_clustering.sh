@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Import machine-specific paths (TADPOSE_* env vars) from local_paths.json
+source "$(dirname "${BASH_SOURCE[0]}")/load_paths.sh" hpc
+
 ######## CLUSTERING CONFIG #########
 # Order of execution for deletion sizes
 declare -a execution_order=(0 50 25 10)
@@ -22,7 +25,7 @@ declare -a partitions=("aoraki_gpu_L40" "aoraki_gpu_A100_40GB" "aoraki_gpu_A100_
 
 # declare -a partitions=("aoraki_gpu_L40" "aoraki_gpu_A100_40GB" "aoraki_gpu_H100")
 # Adjusted command for generating filenames without requiring CUDA
-filename_cmd="python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/generate_filename.py"
+filename_cmd="python ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/generate_filename.py"
 
 # Prompt user to select the type of clustering
 echo "Select the type of clustering you want to perform:"
@@ -36,19 +39,19 @@ read -p "Enter the number corresponding to your choice: " clustering_choice
 # Set the base command based on the user's choice
 case $clustering_choice in
     1)
-        base_cmd="~/miniconda3/envs/rapids-24.06/bin/python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/clustering_script.py"
         ;;
     2)
-        base_cmd="~/miniconda3/envs/rapids-24.06/bin/python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/velocity_only_clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/velocity_only_clustering_script.py"
         ;;
     3)
-        base_cmd="~/miniconda3/envs/rapids-24.06/bin/python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/weighted_clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/weighted_clustering_script.py"
         ;;
     4)
-        base_cmd="~/miniconda3/envs/rapids-24.06/bin/python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/posture_only_clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/posture_only_clustering_script.py"
         ;;
     5)
-        base_cmd="~/miniconda3/envs/rapids-24.06/bin/python /home/matal178/PyProjects/tadpole_wells/clustering_and_analysis_scripts/posture_diff_and_velocity_clustering.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/posture_diff_and_velocity_clustering.py"
         ;;
     *)
         echo "Invalid choice. Exiting."
@@ -62,7 +65,7 @@ read -p "Enter the full path to the result directory: " result_dir
 read -p "Enter the tag for clustering: " tag
 
 # SLURM job parameters for readability
-slurm_params="--account=matal178 --nodes=1 --ntasks-per-node=1 --gpus-per-task=1 --mem=64GB"
+slurm_params="--account=${TADPOSE_ACCOUNT} --nodes=1 --ntasks-per-node=1 --gpus-per-task=1 --mem=64GB"
 
 # Initialize job list
 declare -a job_list=()
