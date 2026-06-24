@@ -29,3 +29,7 @@ Thumbs.db
 # ── Environments ──
 .env
 .venv/
+
+# ── Machine-specific paths (lab style-guide §5.4) ──
+local_paths.json
+data

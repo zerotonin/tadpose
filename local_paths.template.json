@@ -1,0 +1,20 @@
+{
+  "active_profile": "local",
+  "profiles": {
+    "local": {
+      "data_root": "/path/to/your/tadpole_project",
+      "code_root": "/path/to/your/checkout/tadpose",
+      "python_interpreter": "python",
+      "dlc_config_path": "/path/to/deeplabcut_models/single_tadpole/config.yaml"
+    },
+    "hpc": {
+      "data_root": "/path/to/cluster/tadpole_project",
+      "code_root": "/path/to/your/cluster/checkout/tadpose",
+      "python_interpreter": "/path/to/conda/envs/rapids/bin/python",
+      "dlc_config_path": "/path/to/deeplabcut_models/single_tadpole/config.yaml",
+      "conda_env": "rapids-24.06",
+      "partition": "<your-slurm-partition>",
+      "account": "<your-slurm-account>"
+    }
+  }
+}
