@@ -38,6 +38,9 @@ dependencies = [
     "scikit-posthocs>=0.7",
     "statsmodels>=0.14",
     "rerandomstats>=0.1.0",
+    "networkx>=3.0",
+    "prettytable>=3.0",
+    "tqdm>=4.60",
 ]
 
 [project.optional-dependencies]
