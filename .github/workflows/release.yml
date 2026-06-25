@@ -1,3 +1,13 @@
+# ─────────────────────────────────────────────────────────────────
+#  Release: build distributions and publish a GitHub Release
+#
+#  Triggered by pushing a version tag (e.g. `git tag -a v0.1.0 -m ...`
+#  then `git push origin v0.1.0`).  setuptools-scm derives the package
+#  version from that tag.  The job gates on the test suite, builds an
+#  sdist + wheel, and attaches them to an auto-generated GitHub Release.
+#  With the Zenodo-GitHub integration enabled, each Release also mints a
+#  citable DOI from CITATION.cff.
+# ─────────────────────────────────────────────────────────────────
 name: release
 
 on:

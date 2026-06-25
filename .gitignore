@@ -33,3 +33,6 @@ Thumbs.db
 # ── Machine-specific paths (lab style-guide §5.4) ──
 local_paths.json
 data
+
+# ── Docs build ──
+docs/_build/

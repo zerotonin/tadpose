@@ -1,0 +1,6 @@
+# Pinned documentation-build dependencies (separate from the package deps).
+# The package itself is installed with `pip install -e .` in the docs
+# workflow so autodoc can import it; heavy GPU/hardware deps are mocked in
+# conf.py (autodoc_mock_imports).
+sphinx==7.4.7
+sphinx-rtd-theme==2.0.0
