@@ -1,5 +1,13 @@
 # TadPose
 
+[![tests](https://github.com/zerotonin/tadpose/actions/workflows/tests.yml/badge.svg)](https://github.com/zerotonin/tadpose/actions/workflows/tests.yml)
+[![docs](https://github.com/zerotonin/tadpose/actions/workflows/docs.yml/badge.svg)](https://zerotonin.github.io/tadpose/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue.svg)](pyproject.toml)
+[![Code style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Pose estimation: DeepLabCut](https://img.shields.io/badge/pose%20estimation-DeepLabCut-1f4b99.svg)](https://github.com/DeepLabCut/DeepLabCut)
+[![Statistics: reRandomStats](https://img.shields.io/badge/statistics-reRandomStats-009E73.svg)](https://github.com/zerotonin/reRandomStats)
+
 **Automated behavioural phenotyping of *Xenopus laevis* tadpoles from
 24-well plate video.**
 

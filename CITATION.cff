@@ -12,5 +12,13 @@ authors:
     given-names: Bart R. H.
     orcid: "https://orcid.org/0000-0002-1816-3241"
 repository-code: "https://github.com/zerotonin/tadpose"
-version: 0.1.0
+url: "https://zerotonin.github.io/tadpose/"
+keywords:
+  - Xenopus laevis
+  - tadpole
+  - seizure
+  - behavioural clustering
+  - DeepLabCut
+  - pose estimation
+version: "0.1.0"
 date-released: "2026-01-01"
