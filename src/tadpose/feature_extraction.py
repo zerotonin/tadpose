@@ -295,8 +295,10 @@ def align_posture(
     # « apply rotation R(-theta) to all parts simultaneously »
     cos_t = np.cos(-theta)  # (N,)
     sin_t = np.sin(-theta)  # (N,)
-    x_old = coords[:, :, 0]  # (N, P)
-    y_old = coords[:, :, 1]  # (N, P)
+    # Copy, not view: assigning coords[:, :, 0] below would otherwise
+    # mutate x_old in place before it is read for the y component.
+    x_old = coords[:, :, 0].copy()  # (N, P)
+    y_old = coords[:, :, 1].copy()  # (N, P)
     coords[:, :, 0] = x_old * cos_t[:, np.newaxis] - y_old * sin_t[:, np.newaxis]
     coords[:, :, 1] = x_old * sin_t[:, np.newaxis] + y_old * cos_t[:, np.newaxis]
 
