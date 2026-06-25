@@ -6,11 +6,7 @@
 # ║  metadata CSV/JSON file locations.                               ║
 # ╚══════════════════════════════════════════════════════════════════╝
 import os
-import json
 from pathlib import Path
-from tkinter import filedialog
-import tkinter as tk
-import re
 class FileManager:
     def __init__(self):
         pass
@@ -219,9 +215,6 @@ class FileManager:
     def get_python_interpreter(self):
         return self.python_interpreter
 
-    def get_dlc_config(self):
-        return self.dlc_config
-    
     def get_video_writer_path(self, video_path,well_number):
         filename = f"{os.path.splitext(os.path.basename(video_path))[0]}_well_{well_number:02d}.mp4"
         return filename
@@ -229,10 +222,7 @@ class FileManager:
     def get_video_name_from_path(self, video_path):
         video_name = f"{os.path.splitext(os.path.basename(video_path))[0]}"
         return video_name
-    
-    def get_script_base_path(self):
-        return self.script_base_path
-    
+
     def get_well_metadata_path(self, path_for_output): # takes the whole output path for videos and re creates output path to get metadata dict
         output_base_folder = os.path.dirname(path_for_output.rstrip('/'))
         output_filepath = os.path.join(output_base_folder,"meta_data", 'video_meta_data_table.json')    

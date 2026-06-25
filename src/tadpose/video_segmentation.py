@@ -34,7 +34,6 @@ import cv2 as cv
 import numpy as np
 import scipy.ndimage
 from numpy.typing import NDArray
-from scipy.signal import butter, filtfilt
 from tqdm import tqdm
 
 from tadpose.well_detection import WellDetector, N_WELLS

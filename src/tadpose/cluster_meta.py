@@ -12,7 +12,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 import numpy as np
-from math import pi
 
 from tadpose.viz_constants import save_figure
 
@@ -66,7 +65,7 @@ class ClusterMetaAnalysis:
 
                             # Append the modified content to the data list
                             data.append(content)
-                    except:
+                    except Exception:
                         print(f'file not loadable: {file_path}')
 
         # Convert the list of data to a DataFrame

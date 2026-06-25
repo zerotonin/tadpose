@@ -74,7 +74,7 @@ class SlurmJobManager:
         # MODULE SCRIPT python_command = f"{self.python_path} -m yolo_tools.{script_parameters['module']}.{script_parameters['python_script']} {script_parameters['script_variables']}"
         # script that just uses paths
         if mode == 'python':
-            if type(script_parameters['script_variables']) == list:
+            if isinstance(script_parameters['script_variables'], list):
                 command_str = ''
                 for script_var in script_parameters['script_variables']:
                     command_str += f'{self.python_path} {script_parameters["python_script"]} {script_var}&\n'
@@ -87,7 +87,7 @@ class SlurmJobManager:
 
             
         # Construct the SLURM script content
-        content =  f'#!/bin/bash\n'
+        content =  '#!/bin/bash\n'
         content += f'#SBATCH --job-name={script_parameters["jobname"]}\n'
         content += f'#SBATCH --account={self.user_name}\n'
         content += f'#SBATCH --partition={script_parameters["partition"]}\n'
@@ -101,8 +101,8 @@ class SlurmJobManager:
         content += f'#SBATCH --time={self.format_duration_for_sbatch(script_parameters["runtime_sec"])}\n'
         content += f'#SBATCH --output={self.base_output_path}/slurm_logs/%x.out\n'
         content += f'#SBATCH --error={self.base_output_path}/slurm_logs/%x.err\n'
-        content += f'\n'
-        content += f'sleep 5 # wait on auto mount\n'
+        content += '\n'
+        content += 'sleep 5 # wait on auto mount\n'
         # content += f'source {self.file_manager.file_dict['conda_script_position']}\n' # This should come from the filemanager
         # content += f'conda activate {self.file_manager.file_dict['conda_env_name']}\n'
         content += f'{command_str}'

@@ -7,7 +7,6 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 import os
 import pandas as pd
-import numpy as np
 from itertools import permutations
 from collections import Counter
 import argparse

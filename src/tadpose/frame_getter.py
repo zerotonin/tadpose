@@ -5,19 +5,14 @@
 # ║  Extracts and assembles example video frames for given tadpole   ║
 # ║  and trial ids from the database.                                ║
 # ╚══════════════════════════════════════════════════════════════════╝
-import sys
 import os
 # add the directory called tatdpole_wells as the root going up from wheever I am in the file paths
 
 
 # Call the function
 import cv2
-import numpy as np
 import pandas as pd
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-from tadpose.database import TimeSeries, Trial, Video, DatabaseHandler, Trajectory
-import re
+from tadpose.database import TimeSeries, Trial, Video, DatabaseHandler
 
 class TadpoleFrameExtractor:
     def __init__(self, data_csv_file, ids_from_np_data, db_path, base_video_dir):

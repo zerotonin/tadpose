@@ -24,8 +24,7 @@ import pandas as pd
 from scipy.stats import gaussian_kde
 
 from tadpose.viz_constants import (
-    WONG, GROUP_COLOURS, BEHAVIOUR_COLOURS,
-    save_figure, apply_tadpose_style, sig_stars,
+    WONG, GROUP_COLOURS, save_figure, apply_tadpose_style, sig_stars,
 )
 
 

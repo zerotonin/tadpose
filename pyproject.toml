@@ -45,7 +45,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = ["cuml-cu12"]
-dev = ["pytest>=7.0", "pytest-cov", "sphinx", "sphinx-rtd-theme"]
+dev = ["pytest>=7.0", "pytest-cov", "ruff>=0.6", "sphinx", "sphinx-rtd-theme"]
 
 [project.scripts]
 tadpose = "tadpose.cli:main"
@@ -63,3 +63,17 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# _legacy dirs hold parked, un-migrated student code; do not lint them.
+extend-exclude = ["**/_legacy"]
+
+[tool.ruff.lint.per-file-ignores]
+# The interactive DB managers import the ORM via `from tadpose.database
+# import *`.  Explicit imports are deferred to the orchestrator-revival
+# phase (which reworks these modules against the yolo_tools template).
+"src/tadpose/experiment_manager.py" = ["F403", "F405"]
+"src/tadpose/plate_manager.py" = ["F403", "F405"]
+"src/tadpose/result_manager.py" = ["F403", "F405"]

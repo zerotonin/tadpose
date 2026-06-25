@@ -7,7 +7,6 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 import os
 import pandas as pd
-import numpy as np
 from collections import Counter
 from scipy.stats import binom
 import argparse

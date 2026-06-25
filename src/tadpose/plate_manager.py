@@ -7,7 +7,6 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 import os
 from prettytable import PrettyTable
-from sqlalchemy.orm import sessionmaker
 from tadpose.database import *
 from datetime import datetime
 class PlateManager:
@@ -302,7 +301,7 @@ class PlateManager:
             choice = input("Enter your choice: ").strip()
             if choice == '1':
                 well_type = self.select_existing_well_type()
-                if well_type==None:
+                if well_type is None:
                     continue
                 if well_type and well_type not in well_types:
                     well_types.append(well_type)
@@ -310,7 +309,7 @@ class PlateManager:
                     print("This well type is already selected or not available.")
             elif choice == '2':
                 well_type = self.enter_new_well_type()
-                if well_type==None: 
+                if well_type is None: 
                     continue
                 well_types.append(well_type)
             elif choice == '3':
@@ -660,7 +659,7 @@ class PlateManager:
             choice = input("Enter your choice: ").strip()
             if choice == '1':
                 tadpole_group = self.select_existing_tadpole_group()
-                if tadpole_group==None:
+                if tadpole_group is None:
                     continue
                 if tadpole_group and tadpole_group not in tadpole_groups:
                     tadpole_groups.append(tadpole_group)
@@ -668,7 +667,7 @@ class PlateManager:
                     print("This tadpole group is already selected or not available.")
             elif choice == '2':
                 tadpole_group = self.enter_new_tadpole_group()
-                if tadpole_group==None: 
+                if tadpole_group is None: 
                     continue
                 tadpole_groups.append(tadpole_group)
             elif choice == '3':
@@ -881,7 +880,7 @@ class PlateManager:
             self.clear_screen()
             print("Existing Tadpole Group Mothers")
             print(self.display_existing_tadpole_mothers())
-            if mother==None:
+            if mother is None:
                 print("No Mother Currently Selected")
             else:
                 print("Current Selection ID:"+ str(mother.frog_id))

@@ -8,8 +8,6 @@
 import numpy as np
 import json
 from tqdm import tqdm
-from sklearn.metrics import silhouette_score
-import re 
 class CentroidProcessor:
     def __init__(self, label_file: str, data_file: str, centroids_file: str):
         # Load the files

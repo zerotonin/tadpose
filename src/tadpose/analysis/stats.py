@@ -22,9 +22,7 @@ from typing import Optional
 import pandas as pd
 from rerandomstats import (
     FisherResamplingTest,
-    HypothesisTests,
     MultiGroupTest,
-    write_pretty_table,
 )
 
 

@@ -25,7 +25,6 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
-from matplotlib.patches import FancyArrowPatch
 from numpy.typing import NDArray
 
 from tadpose.viz_constants import (

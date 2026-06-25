@@ -243,7 +243,6 @@ class tadpoleHMM:
             for j in range(self.confidence_intervals.shape[1]):
                 lower, upper = self.confidence_intervals[i, j]
                 apriori = self.apriori_null_level[i]
-                prob = self.transition_probabilities[i, j]
                 if upper < apriori:
                     preferred_transitions[i, j] = 'below'
                 elif lower > apriori:
