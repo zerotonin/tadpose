@@ -28,7 +28,7 @@ import pandas as pd
 from scipy.stats import gaussian_kde
 
 from tadpose.viz_constants import (
-    WONG, GROUP_COLOURS, save_figure, apply_tadpose_style, sig_stars,
+    WONG, GROUP_COLOURS, save_figure, apply_tadpose_style, sig_stars, pm_label,
 )
 
 
@@ -407,7 +407,7 @@ def raincloud_grid(
         raincloud(
             ax, sub, value_col, group_col,
             group_order=group_order, colours=colours,
-            title=f"C{cluster_id}", ylabel="" if col > 0 else "Proportion",
+            title=pm_label(cluster_id), ylabel="" if col > 0 else "Proportion",
         )
 
         # add brackets for this cluster
@@ -515,7 +515,7 @@ def proportion_bars(
                label=group, edgecolor="white", linewidth=0.5)
 
     ax.set_xticks(x)
-    ax.set_xticklabels([f"C{c}" for c in cluster_order],
+    ax.set_xticklabels([pm_label(c) for c in cluster_order],
                        rotation=45, ha="right", fontsize=7)
     ax.set_ylabel("Proportion")
     ax.legend(fontsize=7, frameon=False)

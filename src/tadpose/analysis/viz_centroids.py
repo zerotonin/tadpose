@@ -33,7 +33,7 @@ from numpy.typing import NDArray
 
 from tadpose.viz_constants import (
     LANDMARK_COLOURS, THRUST_COLOUR, SLIP_COLOUR, YAW_COLOUR,
-    save_figure, apply_tadpose_style,
+    save_figure, apply_tadpose_style, pm_label,
 )
 
 
@@ -305,7 +305,7 @@ def plot_centroid(
     )
 
     if cluster_id is not None:
-        fig.suptitle(f"Cluster {cluster_id}", fontsize=10, y=1.02)
+        fig.suptitle(pm_label(cluster_id), fontsize=10, y=1.02)
 
     fig.tight_layout()
     return fig
@@ -385,7 +385,7 @@ def plot_centroid_grid(
             float(all_thrust[i]), float(all_slip[i]), float(all_yaw[i]),
             max_thrust=mt, max_slip=ms, max_yaw=my,
         )
-        ax_pos.set_title(f"C{i}", fontsize=7, pad=2)
+        ax_pos.set_title(pm_label(i), fontsize=7, pad=2)
 
     # hide unused cells
     for i in range(k, nrows * ncols):
