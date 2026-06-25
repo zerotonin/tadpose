@@ -18,6 +18,7 @@ from matplotlib.colors import LogNorm
 import networkx as nx
 
 from tadpose import config
+from tadpose.viz_constants import save_figure
 
 def plot_above_transitions(tadpole_hmm, ax=None):
     transition_probs = tadpole_hmm.get_transition_probabilities()
@@ -351,12 +352,10 @@ class TadpoleHMMGroupAnalysis:
                 figure_info.append((fig2, f'{label}_above_apriori_states'))
                 figure_info.append((fig3, f'{label}_above_global_null'))
 
-            # Save all figures in category_output_dir
+            # Save all figures in category_output_dir (SVG + PNG via save_figure)
             for fig, name in figure_info:
-                for extension in ('png', 'svg'):
-                    save_path = os.path.join(category_output_dir, f'{name}.{extension}')
-                    fig.savefig(save_path)
-                    print(f"    Saved figure: {save_path}")
+                save_figure(fig, Path(category_output_dir) / name)
+                print(f"    Saved figure: {name}")
                 plt.close(fig)  # Close the figure to free memory
 
         print('HMM analysis completed for all categories.')

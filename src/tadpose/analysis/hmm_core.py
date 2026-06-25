@@ -18,6 +18,7 @@ from matplotlib.colors import LogNorm
 import networkx as nx
 
 from tadpose import config
+from tadpose.viz_constants import save_figure
 
 def plot_above_transitions(tadpole_hmm, ax=None):
     """Plots a directed graph showing only significant above-average transitions with color-coded nodes and labels inside.
@@ -281,8 +282,7 @@ def _main() -> None:
         (plot_threshold_transitions(tadpole_hmm), "above_global_null"),
     ]
     for fig, name in figures:
-        for extension in ("png", "svg"):
-            fig.savefig(args.output_dir / f"{name}.{extension}")
+        save_figure(fig, args.output_dir / name)
     print("done")
 
 

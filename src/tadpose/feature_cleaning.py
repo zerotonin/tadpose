@@ -179,5 +179,8 @@ def plot_feature_histograms(
         ax.set_ylabel("count (log)")
 
     fig.tight_layout()
+    # Internal QC diagnostic, not a publication figure: keep the lazy Agg
+    # backend and a plain raster save rather than routing through
+    # viz_constants.save_figure (which would pull matplotlib eagerly).
     fig.savefig(output_path, dpi=150)
     plt.close(fig)

@@ -14,6 +14,8 @@ from scipy.optimize import linear_sum_assignment
 import numpy as np
 from math import pi
 
+from tadpose.viz_constants import save_figure
+
 class ClusterMetaAnalysis:
     """Analyzes clustering metadata and centroids for stability and patterns.
 
@@ -372,8 +374,7 @@ def _main() -> None:
     figures_directory = directory / "figures"
     figures_directory.mkdir(parents=True, exist_ok=True)
     for fig, filename in zip(fig_list, fig_string):
-        for ext in ("png", "svg"):
-            fig.savefig(figures_directory / f"{filename}.{ext}")
+        save_figure(fig, figures_directory / filename)
 
 
 if __name__ == "__main__":
