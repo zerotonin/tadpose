@@ -5,6 +5,10 @@
 # ║  Extracts capture metadata (fps, frame size, date-time) from a   ║
 # ║  raw plate video via OpenCV.                                     ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Probe fps, resolution and timestamp.
+
+Extracts capture metadata (fps, frame size, date-time) from a raw plate video via OpenCV.
+"""
 import os
 import cv2
 from datetime import datetime

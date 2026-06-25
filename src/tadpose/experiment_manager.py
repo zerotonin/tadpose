@@ -5,6 +5,10 @@
 # ║  Console-driven creation of experiment types, investigators      ║
 # ║  and series records in the tadpole database.                     ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Interactive experiment and investigator setup.
+
+Console-driven creation of experiment types, investigators and series records in the tadpole database.
+"""
 from tadpose.database import *
 from prettytable import PrettyTable
 import os

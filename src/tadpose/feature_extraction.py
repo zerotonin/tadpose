@@ -30,6 +30,10 @@
 # ║  • bone-length validation (was commented out in caller)          ║
 # ║  • FileManager coupling (scaling params now explicit args)       ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Turning wiggly pixels into thrust, yaw, and posture.
+
+Extract body-centric velocity (thrust, yaw, slip) and frons-aligned posture from DeepLabCut tracking output.
+"""
 
 from __future__ import annotations
 

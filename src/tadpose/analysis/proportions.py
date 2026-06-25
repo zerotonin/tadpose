@@ -10,6 +10,12 @@
 # ║  across extract_individual_group_proportion_data.py,             ║
 # ║  plot_cluster_proportion_differences.py, and 4 other files.      ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""How much time does each tadpole spend in each cluster?
+
+Compute cluster membership proportions at the trial level, aggregate by
+experimental group, and prepare long-format DataFrames for statistical
+testing and visualisation.
+"""
 
 from __future__ import annotations
 

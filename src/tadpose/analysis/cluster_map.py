@@ -10,6 +10,10 @@
 # ║  edit it without touching Python code.  A default mapping        ║
 # ║  is built in for the k=36 clustering used in the thesis.         ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Giving 36 arbitrary numbers a name and an order.
+
+K-means cluster IDs are arbitrary. This module provides a mapping from raw cluster numbers to behavioural categories and a canonical display order for publication figures. The mapping is stored as a JSON file so Alex and Bart can edit it without touching Python code. A default mapping is built in for the k=36 clustering used in the thesis.
+"""
 
 from __future__ import annotations
 

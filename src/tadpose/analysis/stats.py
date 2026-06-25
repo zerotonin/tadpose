@@ -13,6 +13,10 @@
 # ║  Dependency: pip install rerandomstats                           ║
 # ║  (github.com/zerotonin/reRandomStats)                            ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Letting reRandomStats do the heavy lifting.
+
+Thin wrappers around rerandomstats.MultiGroupTest and rerandomstats.FisherResamplingTest for comparing cluster proportions across experimental groups. Replaces the hand-rolled Shapiro → Kruskal → Mann-Whitney → Bonferroni chains that were duplicated across 6 scripts in the original analysis/ directory. Dependency: pip install rerandomstats (github.com/zerotonin/reRandomStats).
+"""
 
 from __future__ import annotations
 

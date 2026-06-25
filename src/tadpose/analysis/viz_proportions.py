@@ -11,6 +11,10 @@
 # ║  Uses Wong (2011) palette from viz_constants.  All figures       ║
 # ║  exported as SVG (editable text) + PNG + CSV data.               ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Rainclouds, not bar charts.
+
+Publication-quality visualisations for comparing cluster proportions and velocity measures across experimental groups. Primary plot type: raincloud (half-violin + jittered strip + boxplot summary) with optional significance brackets. Uses Wong (2011) palette from viz_constants. All figures exported as SVG (editable text) + PNG + CSV data.
+"""
 
 from __future__ import annotations
 

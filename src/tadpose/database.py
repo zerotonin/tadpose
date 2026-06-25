@@ -26,6 +26,10 @@
 # ║  • Docstrings referenced "fly", "genotype", "is_female".         ║
 # ║  • WellTypeAttributes docstring referenced "stimuli"/"Well".     ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Relational schema for 10^7 tadpole observations.
+
+SQLAlchemy ORM models for the tadpole behavioural database. Schema mirrors the experimental hierarchy: ExperimentType → ExperimentSeries → Video → Trial ↑ ↓ Frog → TadpoleGroup ────────────────┘ TimeSeries ↓ ↓ ↓ Trajectory Posture Velocity ↓ Clustering.
+"""
 
 from __future__ import annotations
 

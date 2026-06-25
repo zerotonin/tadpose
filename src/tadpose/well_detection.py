@@ -25,6 +25,10 @@
 # ║  • top-left corners vectorised via np.clip on arrays             ║
 # ║  • grid interpolation vectorised via np.meshgrid                 ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Finding 24 needles in a Hough-stack.
+
+Detect, correct, and localise the 24 circular wells in a multi-well plate image. Corrects for lens distortion via eigenvector alignment and central-well interpolation.
+"""
 
 from __future__ import annotations
 

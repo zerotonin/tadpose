@@ -16,6 +16,10 @@
 # ║  • All kinematic arrows normalised to the global max             ║
 # ║  • Wong palette from viz_constants                               ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Posture silhouettes and kinematics crosses.
+
+Publication-quality centroid visualisation combining:.
+"""
 
 from __future__ import annotations
 
@@ -155,9 +159,9 @@ def plot_kinematics_cross(
         thrust:      Thrust value (positive = forward).
         slip:        Slip value (positive = left).
         yaw:         Yaw value (positive = left/CCW).
-        max_thrust:  Global max |thrust| for normalisation.
-        max_slip:    Global max |slip| for normalisation.
-        max_yaw:     Global max |yaw| for normalisation.
+        max_thrust:  Global maximum absolute thrust for normalisation.
+        max_slip:    Global maximum absolute slip for normalisation.
+        max_yaw:     Global maximum absolute yaw for normalisation.
         cross_radius: Size of the reference cross arms.
     """
     r = cross_radius

@@ -17,6 +17,10 @@
 # ║  Rewritten from clustering_script.py (A.R.H. Matthews, 2024).  ║
 # ║  Removed commented-out scaling, duplicate generate_filename.    ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""GPU k-means on 10^7 frames, submitted via SLURM.
+
+Partitions z-scored feature vectors into k prototypical behaviours using RAPIDS cuML k-means on GPU. Evaluates cluster quality via Calinski-Harabasz index. Supports contiguous leave-out for stability analysis. Designed for SLURM array-job submission: all parameters (k, deletion size, deletion position, random state) are accepted as CLI arguments. See also: stag.clustering.kmeans (zerotonin/stag) which implements the same pattern for deer gait data.
+"""
 
 from __future__ import annotations
 

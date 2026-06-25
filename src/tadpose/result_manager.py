@@ -5,6 +5,10 @@
 # ║  Ingests per-trial trajectory, posture and velocity outputs      ║
 # ║  and commits them to the tadpole database.                       ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Write pipeline results into the database.
+
+Ingests per-trial trajectory, posture and velocity outputs and commits them to the tadpole database.
+"""
 import os
 import json
 import math

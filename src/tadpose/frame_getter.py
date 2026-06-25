@@ -5,6 +5,10 @@
 # ║  Extracts and assembles example video frames for given tadpole   ║
 # ║  and trial ids from the database.                                ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Pull representative frames per tadpole.
+
+Extracts and assembles example video frames for given tadpole and trial ids from the database.
+"""
 import os
 # add the directory called tatdpole_wells as the root going up from wheever I am in the file paths
 

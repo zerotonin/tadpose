@@ -5,6 +5,10 @@
 # ║  Thin wrapper that runs DeepLabCut pose estimation over a        ║
 # ║  single per-well clip.                                           ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""DeepLabCut video-analysis wrapper.
+
+Thin wrapper that runs DeepLabCut pose estimation over a single per-well clip.
+"""
 import argparse
 import deeplabcut
 

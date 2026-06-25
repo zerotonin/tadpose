@@ -22,6 +22,10 @@
 # ║  • Removed unused imports (pickle, re, shutil).                  ║
 # ║  • Path objects throughout, type hints, dead code purged.        ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""One plate video in, 24 well videos out.
+
+Split a 24-well plate recording into individual per-well greyscale videos. Two-pass approach: Pass 1 Detect well centres in every frame (or just the first), then smooth the centre trajectories to correct for camera drift. Pass 2 Crop each frame at the smoothed centres and write 24 .mp4 files.
+"""
 
 from __future__ import annotations
 

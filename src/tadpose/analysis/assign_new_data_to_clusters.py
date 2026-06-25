@@ -5,6 +5,10 @@
 # ║  Assigns each z-scored feature row to the closest cluster        ║
 # ║  centroid (Euclidean) and saves the label array.                 ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Label new feature rows by nearest centroid.
+
+Assigns each z-scored feature row to the closest cluster centroid (Euclidean) and saves the label array.
+"""
 from __future__ import annotations
 
 import argparse

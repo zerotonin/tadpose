@@ -5,6 +5,10 @@
 # ║  Central owner of the per-run output directory layout and the    ║
 # ║  metadata CSV/JSON file locations.                               ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Output paths and metadata file conventions.
+
+Central owner of the per-run output directory layout and the metadata CSV/JSON file locations.
+"""
 import os
 from pathlib import Path
 class FileManager:

@@ -8,6 +8,10 @@
 # ║  Wong (2011) colourblind-safe palette with semantic mappings     ║
 # ║  to behavioural categories identified in the clustering.         ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""One source of truth for colours, paths, and figure rules.
+
+Central configuration for all TadPose visualisations. Import this module instead of hardcoding hex values. Wong (2011) colourblind-safe palette with semantic mappings to behavioural categories identified in the clustering.
+"""
 
 from __future__ import annotations
 

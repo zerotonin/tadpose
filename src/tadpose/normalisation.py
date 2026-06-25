@@ -9,6 +9,11 @@
 # ║  musigma.py (A.R.H. Matthews, 2024).  Removed hardcoded paths  ║
 # ║  and module-level script execution.                             ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Z-scoring 10^7 observations without breaking a sweat.
+
+Compute, save, load, and apply z-score normalisation for clustering
+feature matrices.
+"""
 
 from __future__ import annotations
 

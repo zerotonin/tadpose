@@ -5,6 +5,10 @@
 # ║  Aggregates the per-trial superprototype counts emitted by the   ║
 # ║  SLURM array into a single HDF5 table for downstream stats.      ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Pool per-trial superprototype chains into one table.
+
+Aggregates the per-trial superprototype counts emitted by the SLURM array into a single HDF5 table for downstream stats.
+"""
 import os
 import pandas as pd
 from collections import Counter

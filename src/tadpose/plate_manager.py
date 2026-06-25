@@ -5,6 +5,10 @@
 # ║  Console-driven assignment of well types and tadpole groups      ║
 # ║  across the 24 wells of a plate.                                 ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Interactive 24-well plate assignment.
+
+Console-driven assignment of well types and tadpole groups across the 24 wells of a plate.
+"""
 import os
 from prettytable import PrettyTable
 from tadpose.database import *

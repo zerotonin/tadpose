@@ -5,6 +5,10 @@
 # ║  Attaches centroid labels to feature rows and computes the       ║
 # ║  average posture before/after a given cluster split.             ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Align cluster centroids across runs.
+
+Attaches centroid labels to feature rows and computes the average posture before/after a given cluster split.
+"""
 import numpy as np
 import json
 from tqdm import tqdm
@@ -124,18 +128,13 @@ class CentroidProcessor:
         return data_with_k, data_without_k
     
     def sample_cluster_indices(self):
-        """
-        Generates a random sample of n indices for each cluster label.
-        
-        Args:
-        - n (int): Number of indices to sample per cluster.
+        """Pick one representative index per cluster label.
 
         Returns:
-        - sampled_indices (list of lists): Outer list contains a list of n sampled indices 
-                                        for each cluster label.
-        - sampled_data (list of dicts): Outer list contains dictionaries for each sampled index.
-                                        Each dictionary has "body_position_before", "body_position_after",
-                                        and "velocity_and_diffs" as keys, with corresponding NumPy arrays.
+            A tuple ``(sampled_indices, sampled_data)``.  ``sampled_indices``
+            holds one index per cluster label; ``sampled_data`` holds a dict
+            per sampled index with ``body_position_before``,
+            ``body_position_after`` and ``velocity_and_diffs`` entries.
         """
         np.random.seed(0)  # Set the random seed for reproducibility
         sampled_indices = []

@@ -11,6 +11,10 @@
 # ║  Removed interactive input() menus and module-level script      ║
 # ║  execution.  Kept Appendix A boundaries as the default.         ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Scrubbing artefacts from 6×10^7 observations.
+
+Remove tracking artefacts by applying distribution-based thresholds to velocity and posture features. Boundaries derived from logarithmic histogram inspection of rare non- linearities (thesis Appendix A).
+"""
 
 from __future__ import annotations
 

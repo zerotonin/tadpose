@@ -5,6 +5,10 @@
 # ║  Persists experiment / plate / camera setup choices so a         ║
 # ║  session can be replayed without re-entering them.               ║
 # ╚══════════════════════════════════════════════════════════════════╝
+"""Save and reload experiment-setup presets.
+
+Persists experiment / plate / camera setup choices so a session can be replayed without re-entering them.
+"""
 import os
 import json
 
