@@ -15,10 +15,28 @@ dispatches to one subcommand per pipeline stage:
    tadpose <stage> --help         # options for an individual stage
 
 Available stages include ``config``, ``assign-clusters``, ``label``,
-``hmm``, ``hmm-groups`` and ``cluster-meta``.  Each stage derives its
-default input and output paths from :func:`tadpose.config.data_root`, so a
-correctly filled ``local_paths.json`` (see :doc:`installation`) is all that
-is required to run a stage on a new machine.
+``hmm``, ``hmm-groups``, ``cluster-meta`` and ``metrics``.  Each stage
+derives its default input and output paths from
+:func:`tadpose.config.data_root`, so a correctly filled ``local_paths.json``
+(see :doc:`installation`) is all that is required to run a stage on a new
+machine.
+
+Choosing the number of clusters
+-------------------------------
+
+The ``metrics`` stage builds an internal cluster-validation summary over a
+*k* sweep — Calinski–Harabasz, within-cluster inertia with a Kneedle elbow,
+and (optionally) a stratified silhouette that fairly represents rare seizure
+motifs — and writes a CSV (and optional figure):
+
+.. code-block:: bash
+
+   tadpose metrics --meta-dir <clustering_results> --data-file <zscored.npy> \
+       --output-csv selection_summary.csv --silhouette --plot selection
+
+See :mod:`tadpose.analysis.internal_metrics` for the underlying functions
+(``compute_silhouette_stratified``, ``compute_inertia``,
+``locate_elbow_kneedle``, ``selection_summary``).
 
 Using the library
 ------------------

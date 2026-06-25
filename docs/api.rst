@@ -49,6 +49,12 @@ Clustering
 .. automodule:: tadpose.centroid_matching
    :members:
 
+Cluster validation (choosing k)
+-------------------------------
+
+.. automodule:: tadpose.analysis.internal_metrics
+   :members:
+
 Post-clustering analysis
 ------------------------
 
