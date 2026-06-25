@@ -13,9 +13,10 @@ import os
 import json
 
 class PresetManager:
-    def init(self):
-        self.is_experiment_setup=False
+    def __init__(self):
+        self.is_experiment_setup = False
         self.is_plate_setup = False
+        self.is_camera_setup = False
         
     def manage_presets(self, filemanager):
         preset_folder = filemanager.get_preset_folder()
