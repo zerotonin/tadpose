@@ -187,6 +187,7 @@ def run_kmeans(
 
     # « quality »
     ch = calinski_harabasz(labels, data_gpu)
+    inertia = float(km.inertia_)  # within-cluster SSE W(k), for the elbow
 
     # « save »
     paths = make_output_paths(save_dir, tag, n_clusters, del_size, del_pos)
@@ -195,6 +196,7 @@ def run_kmeans(
 
     meta = {
         "calinski_harabasz_score": ch,
+        "inertia": inertia,
         "data_file": str(data_path),
         "reduction_percent": del_size,
         "cut_position_percent": del_pos,

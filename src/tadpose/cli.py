@@ -20,6 +20,7 @@ _COMMANDS: dict[str, str] = {
     "hmm":             "tadpose.analysis.hmm_core",
     "hmm-groups":      "tadpose.analysis.hmm_bio",
     "cluster-meta":    "tadpose.cluster_meta",
+    "metrics":         "tadpose.analysis.internal_metrics",
 }
 
 

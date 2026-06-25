@@ -41,6 +41,7 @@ dependencies = [
     "networkx>=3.0",
     "prettytable>=3.0",
     "tqdm>=4.60",
+    "kneed>=0.8",
 ]
 
 [project.optional-dependencies]

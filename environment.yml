@@ -17,6 +17,7 @@ dependencies:
   - networkx>=3.0
   - prettytable>=3.0
   - tqdm>=4.60
+  - kneed>=0.8
   - pip
   - pip:
     - scikit-posthocs>=0.7
