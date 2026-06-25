@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tadpose"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Automated behavioural phenotyping of Xenopus laevis tadpoles from 24-well plate video."
 readme = "README.md"
 license = {text = "MIT"}
@@ -37,7 +37,7 @@ dependencies = [
     "scikit-learn>=1.3",
     "scikit-posthocs>=0.7",
     "statsmodels>=0.14",
-    "rerandomstats>=0.1.0",
+    "rerandomstats @ git+https://github.com/zerotonin/reRandomStats.git",
     "networkx>=3.0",
     "prettytable>=3.0",
     "tqdm>=4.60",
@@ -45,13 +45,20 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = ["cuml-cu12"]
-dev = ["pytest>=7.0", "sphinx", "sphinx-rtd-theme"]
+dev = ["pytest>=7.0", "pytest-cov", "sphinx", "sphinx-rtd-theme"]
+
+[project.scripts]
+tadpose = "tadpose.cli:main"
 
 [project.urls]
 Repository = "https://github.com/zerotonin/tadpose"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools_scm]
+# Version is derived from git tags (e.g. v0.1.0).  No fallback file is
+# written; the installed package exposes it via importlib.metadata.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
