@@ -25,9 +25,14 @@ declare -a partitions=("aoraki_gpu_L40" "aoraki_gpu_A100_40GB" "aoraki_gpu_A100_
 
 # declare -a partitions=("aoraki_gpu_L40" "aoraki_gpu_A100_40GB" "aoraki_gpu_H100")
 # Adjusted command for generating filenames without requiring CUDA
-filename_cmd="python ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/generate_filename.py"
+filename_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering --print-meta-path"
 
-# Prompt user to select the type of clustering
+# Prompt user to select the type of clustering.
+# NOTE: feature-set selection (velocity-only, posture-only, weighted, ...)
+# is now decided when the z-scored feature matrix is assembled upstream, not
+# by separate clustering scripts.  Every option runs the same
+# `tadpose.clustering` module on the matrix passed as $data_file; pick the
+# option that matches the matrix you built.
 echo "Select the type of clustering you want to perform:"
 echo "1) Vanilla"
 echo "2) Velocity Only"
@@ -39,19 +44,19 @@ read -p "Enter the number corresponding to your choice: " clustering_choice
 # Set the base command based on the user's choice
 case $clustering_choice in
     1)
-        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering"
         ;;
     2)
-        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/velocity_only_clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering"
         ;;
     3)
-        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/weighted_clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering"
         ;;
     4)
-        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/posture_only_clustering_script.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering"
         ;;
     5)
-        base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/posture_diff_and_velocity_clustering.py"
+        base_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering"
         ;;
     *)
         echo "Invalid choice. Exiting."
@@ -77,7 +82,7 @@ for del_size in "${execution_order[@]}"; do
     for del_pos in $(seq 2 2 100); do
         for k in "${k_values_all[@]}"; do
             # Generate filename for checking if the job is already done
-            meta_file=$($filename_cmd "$result_dir" "$tag" "$k" "$del_size" "$del_pos")
+            meta_file=$($filename_cmd -sd "$result_dir" -t "$tag" -nc "$k" -ds "$del_size" -dp "$del_pos")
             # Check if the meta file already exists
             if [ ! -f "$meta_file" ]; then
                 # Construct job_name with del_size, del_pos, and k

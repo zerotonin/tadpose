@@ -53,10 +53,10 @@ echo "Using sequence: ${del_pos_seq[@]}"
 
 
 # Adjusted command for generating filenames without requiring CUDA
-filename_cmd="python ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/generate_filename.py"
+filename_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering --print-meta-path"
 
 # Base command structure for clustering, requiring CUDA
-base_cmd="${TADPOSE_PYTHON_INTERPRETER} ${TADPOSE_CODE_ROOT}/clustering_and_analysis_scripts/clustering_script.py"
+base_cmd="${TADPOSE_PYTHON_INTERPRETER} -m tadpose.clustering"
 
 # Root directory for data and results
 data_file="${TADPOSE_DATA_ROOT}/cluster_data/normcluster_data_3_videos.npy"
@@ -70,7 +70,7 @@ for del_size in "${execution_order[@]}"; do
     for del_pos in $(seq $start $step $stop); do
         for k in "${k_values_all[@]}"; do
             # Generate filename for checking if the job is already done
-            meta_file=$($filename_cmd "$result_dir" "$tag" "$k" "$del_size" "$del_pos")
+            meta_file=$($filename_cmd -sd "$result_dir" -t "$tag" -nc "$k" -ds "$del_size" -dp "$del_pos")
             # Check if the meta file already exists
             if [ ! -f "$meta_file" ]; then
                 # Construct job_name with del_size, del_pos, and k

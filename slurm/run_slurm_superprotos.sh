@@ -18,8 +18,8 @@ num_labs=34
 label_column='label'
 
 python_interpreter="${TADPOSE_PYTHON_INTERPRETER}"
-superprototypes_script="${TADPOSE_CODE_ROOT}/post_clustering_analysis/SlurmSuperPrototypesAnalysis.py"
-aggregate_script="${TADPOSE_CODE_ROOT}/post_clustering_analysis/AggregateSuperPrototypesAnalysis.py"
+superprototypes_script="-m tadpose.analysis.SlurmSuperPrototypesAnalysis"
+aggregate_script="-m tadpose.analysis.AggregateSuperPrototypesAnalysis"
 input_csv_file="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/agglom_3_and_7_aug21_davies_bouldin_20to40_tadpole_ids_and_labels.csv"
 processed_csv_file="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/34_labelling_superprototypes.csv"
 output_path="${TADPOSE_DATA_ROOT}/cluster_analysis/aug_22_k_34/34_clust_processed_superprototypes/super_output"
