@@ -413,7 +413,7 @@ EXAMPLE_GROUP_CATEGORIES = {
 }
 
 
-def _main() -> None:
+def main() -> None:
     """CLI: run grouped HMM comparisons and save the per-category figures."""
     import argparse
 
@@ -432,4 +432,4 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()

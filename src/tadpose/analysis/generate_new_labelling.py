@@ -53,7 +53,7 @@ def add_clustering_labels(npy_filepath, json_filepaths, output_filepath, new_lab
     print(f"DataFrame saved with new columns at {output_filepath}")
 
 
-def _main() -> None:
+def main() -> None:
     """CLI: fold raw cluster labels into agglomerated category columns.
 
     Defaults follow a layout under ``config.data_root()``; override on the
@@ -81,7 +81,7 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()
 
 
 

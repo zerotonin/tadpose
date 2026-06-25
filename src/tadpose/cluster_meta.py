@@ -345,7 +345,7 @@ def write_results_to_jsonFile(feature_labels,centroids,centroids_uf,centroids_nm
         f.write(json_data)
 
 
-def _main() -> None:
+def main() -> None:
     """CLI: summarise a clustering sweep and save the quality-metric figures."""
     import argparse
     from pathlib import Path
@@ -378,6 +378,6 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()
 
 

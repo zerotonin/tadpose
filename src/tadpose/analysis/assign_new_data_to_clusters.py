@@ -38,7 +38,7 @@ def assign_clusters_from_numpy(json_input, numpy_input, output_file):
     print(f"Cluster labels assigned and saved to {output_file}")
 
 
-def _main() -> None:
+def main() -> None:
     """CLI: assign feature rows to the nearest cluster centroid.
 
     Paths default to a layout under ``config.data_root()`` so nothing
@@ -60,4 +60,4 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()

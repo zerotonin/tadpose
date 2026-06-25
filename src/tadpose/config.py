@@ -133,7 +133,7 @@ def export_lines(profile_name: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def _main() -> None:
+def main() -> None:
     parser = argparse.ArgumentParser(description="TadPose path resolver.")
     parser.add_argument(
         "--export",
@@ -158,4 +158,4 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()

@@ -261,7 +261,7 @@ class tadpoleHMM:
     def get_preferred_transitions(self):
         return self.preferred_transitions
 
-def _main() -> None:
+def main() -> None:
     """CLI: build an HMM from a label array and save the transition figures."""
     root = config.data_root() / "cluster_analysis"
     parser = argparse.ArgumentParser(description="HMM transition analysis.")
@@ -287,4 +287,4 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()
