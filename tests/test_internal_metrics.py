@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────────
+#  TadPose — tests/test_internal_metrics.py
+#  « inertia, stratified silhouette, Kneedle elbow, summary table »
+# ─────────────────────────────────────────────────────────────────
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from tadpose.analysis import internal_metrics as im
+
+
+def _can_import(module: str) -> bool:
+    try:
+        __import__(module)
+        return True
+    except Exception:  # ABI-broken sklearn / missing kneed locally
+        return False
+
+
+HAS_SKLEARN = _can_import("sklearn.metrics")
+HAS_KNEED = _can_import("kneed")
+
+
+# ── inertia (pure numpy) ─────────────────────────────────────────
+def test_compute_inertia_matches_manual():
+    X = np.array([[0.0, 0.0], [2.0, 0.0], [10.0, 10.0], [12.0, 10.0]])
+    centroids = np.array([[1.0, 0.0], [11.0, 10.0]])
+    labels = np.array([0, 0, 1, 1])
+    # each point is distance 1 from its centroid -> 4 * 1^2 = 4
+    assert im.compute_inertia(X, centroids, labels) == pytest.approx(4.0)
+
+
+def test_compute_inertia_chunking_is_invariant():
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((1000, 5))
+    centroids = rng.standard_normal((4, 5))
+    labels = rng.integers(0, 4, size=1000)
+    full = im.compute_inertia(X, centroids, labels, chunk_size=10_000)
+    chunked = im.compute_inertia(X, centroids, labels, chunk_size=37)
+    assert full == pytest.approx(chunked)
+
+
+def test_compute_inertia_matches_sklearn_kmeans():
+    sklearn_cluster = pytest.importorskip("sklearn.cluster")
+    rng = np.random.default_rng(1)
+    X = np.vstack([
+        rng.normal(loc, 0.3, size=(200, 2)) for loc in ([0, 0], [5, 5], [0, 5])
+    ])
+    km = sklearn_cluster.KMeans(n_clusters=3, n_init=10, random_state=0).fit(X)
+    ours = im.compute_inertia(X, km.cluster_centers_, km.labels_)
+    assert ours == pytest.approx(km.inertia_, rel=1e-6)
+
+
+# ── stratified silhouette ────────────────────────────────────────
+@pytest.mark.skipif(not HAS_SKLEARN, reason="sklearn unavailable/ABI-broken")
+def test_silhouette_high_for_separated_blobs():
+    rng = np.random.default_rng(2)
+    X = np.vstack([
+        rng.normal(loc, 0.2, size=(300, 2)) for loc in ([0, 0], [8, 8], [0, 8])
+    ])
+    labels = np.repeat([0, 1, 2], 300)
+    res = im.compute_silhouette_stratified(
+        X, labels, n_per_cluster=100, n_repeats=5, rng=rng
+    )
+    assert res["mean_silhouette"] > 0.7
+    assert res["per_cluster_mean"].shape == (3,)
+    low, high = res["iqr_silhouette"]
+    assert low <= res["mean_silhouette"] <= high or low <= high
+
+
+# ── Kneedle elbow ────────────────────────────────────────────────
+@pytest.mark.skipif(not HAS_KNEED, reason="kneed not installed")
+def test_kneedle_finds_elbow():
+    k = list(range(1, 11))
+    # sharp drop then plateau -> elbow near k=3
+    inertia = [100, 55, 30, 26, 24, 22, 21, 20, 19, 18]
+    res = im.locate_elbow_kneedle(k, inertia)
+    assert res["elbow_k"] is not None
+    assert 2 <= res["elbow_k"] <= 5
+    assert res["elbow_index"] == k.index(res["elbow_k"])
+
+
+# ── summary table ────────────────────────────────────────────────
+def test_selection_summary_columns_and_nan_fill():
+    summary = im.selection_summary([2, 3, 4], ch=[10.0, 20.0, 15.0])
+    assert list(summary["k"]) == [2, 3, 4]
+    assert summary["calinski_harabasz"].tolist() == [10.0, 20.0, 15.0]
+    # unsupplied metrics are NaN-filled
+    assert summary["silhouette"].isna().all()
+    assert summary["inertia"].isna().all()
