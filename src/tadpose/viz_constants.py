@@ -16,10 +16,15 @@ Central configuration for all TadPose visualisations. Import this module instead
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
+if TYPE_CHECKING:
+    import matplotlib.pyplot as plt
+
+# matplotlib is imported lazily inside save_figure() and
+# apply_tadpose_style() so that the constants and the prototype-naming
+# helpers (pm_label, …) can be used without matplotlib — e.g. on a
+# headless HPC node or from the matplotlib-free cluster_map module.
 
 
 # ┌──────────────────────────────────────────────────────────────┐
@@ -72,6 +77,81 @@ BEHAVIOUR_LABELS: dict[str, str] = {
     "flip":                "Flip",
     "still":               "Still",
 }
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Prototype naming  « GROUP.index, not arbitrary k-means ids »  │
+# │                                                              │
+# │ The k=36 thesis fit's clusters belong to ten behavioural     │
+# │ groups (thesis Fig 3.13 `cluster_sets`).  Each prototype gets │
+# │ a GROUP.index label (Scheme A), ordered by prevalence so      │
+# │ CSC.1 is the most frequent C-shaped contraction.  Every       │
+# │ plotter labels prototypes via `pm_label()` so the figures     │
+# │ never show a bare k-means number.                            │
+# └──────────────────────────────────────────────────────────────┘
+
+# Group abbreviation used in the GROUP.index label.
+BEHAVIOUR_ABBREV: dict[str, str] = {
+    "csc":                 "CSC",
+    "csc_edge":            "ECSC",
+    "utb":                 "UTB",
+    "impact_compression":  "IMP",
+    "head_bobbing":        "HB",
+    "flip":                "FLIP",
+    "saccade":             "SAC",
+    "undulatory_swimming": "USW",
+    "regular_swimming":    "SWIM",
+    "still":               "REST",
+}
+
+# Display order of the groups in figures (seizure-like first, rest last).
+BEHAVIOUR_ORDER: list[str] = [
+    "csc", "csc_edge", "utb", "impact_compression", "head_bobbing",
+    "flip", "saccade", "undulatory_swimming", "regular_swimming", "still",
+]
+
+# Canonical k=36 grouping (thesis Fig 3.13 cluster_sets + "other swimming").
+# Member raw k-means ids are listed **in descending prevalence** so the
+# label index follows frame-count order (CSC.1 = most frequent CSC).
+THESIS_K36_GROUPS: dict[str, list[int]] = {
+    "csc":                 [22, 30, 6, 3],
+    "csc_edge":            [15, 24],
+    "utb":                 [29, 20, 25, 32, 34, 23],
+    "impact_compression":  [18, 4, 17, 35],
+    "head_bobbing":        [12, 28],
+    "flip":                [10],
+    "saccade":             [19, 9],
+    "undulatory_swimming": [0, 31],
+    "regular_swimming":    [5, 11, 16, 14, 8, 27, 26, 21, 13, 33, 7, 1],
+    "still":               [2],
+}
+
+
+def _build_pm_labels() -> dict[int, str]:
+    """Map each raw k=36 cluster id to its GROUP.index label."""
+    labels: dict[int, str] = {}
+    for category in BEHAVIOUR_ORDER:
+        abbrev = BEHAVIOUR_ABBREV[category]
+        for index, raw_id in enumerate(THESIS_K36_GROUPS[category], start=1):
+            labels[raw_id] = f"{abbrev}.{index}"
+    return labels
+
+
+# raw k-means id -> "CSC.1" etc.  The single source of truth for figures.
+PM_LABELS: dict[int, str] = _build_pm_labels()
+
+
+def pm_label(raw_id: int) -> str:
+    """Return the GROUP.index label for a raw cluster id (fallback ``C<id>``)."""
+    return PM_LABELS.get(int(raw_id), f"C{int(raw_id)}")
+
+
+def pm_category(raw_id: int) -> str:
+    """Return the behavioural-group key for a raw cluster id."""
+    for category, members in THESIS_K36_GROUPS.items():
+        if raw_id in members:
+            return category
+    return "unclassified"
 
 
 # ┌──────────────────────────────────────────────────────────────┐
@@ -157,6 +237,7 @@ def save_figure(
     Returns:
         List of all saved file paths.
     """
+    import matplotlib as mpl
     import pandas as pd
 
     path = Path(path)
@@ -267,6 +348,8 @@ def apply_tadpose_style() -> None:
 
     Call at the top of any plotting script or notebook.
     """
+    import matplotlib as mpl
+
     mpl.rcParams.update({
         "font.family":       "sans-serif",
         "font.sans-serif":   [DEFAULT_FONT, "DejaVu Sans"],

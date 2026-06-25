@@ -195,3 +195,37 @@ def map_from_dict(
         for i, (raw, cat) in enumerate(items)
     ]
     return ClusterMap(k=len(entries), entries=entries)
+
+
+def thesis_k36_map() -> ClusterMap:
+    """The canonical k=36 mapping with GROUP.index short labels.
+
+    Built from the ten behavioural groups (thesis Fig 3.13 `cluster_sets`)
+    and the prevalence ordering encoded in
+    :data:`tadpose.viz_constants.THESIS_K36_GROUPS`, so every prototype
+    carries a label such as ``CSC.1`` instead of a bare k-means id.
+    Display IDs follow the group order then within-group prevalence.
+    """
+    # Lazy import: keeps cluster_map free of the matplotlib dependency that
+    # viz_constants pulls in.
+    from tadpose.viz_constants import (
+        BEHAVIOUR_ABBREV,
+        BEHAVIOUR_ORDER,
+        THESIS_K36_GROUPS,
+    )
+
+    entries: list[ClusterInfo] = []
+    display = 0
+    for category in BEHAVIOUR_ORDER:
+        abbrev = BEHAVIOUR_ABBREV[category]
+        for index, raw_id in enumerate(THESIS_K36_GROUPS[category], start=1):
+            entries.append(
+                ClusterInfo(
+                    raw_id=raw_id,
+                    display_id=display,
+                    category=category,
+                    short_label=f"{abbrev}.{index}",
+                )
+            )
+            display += 1
+    return ClusterMap(k=len(entries), entries=entries)
