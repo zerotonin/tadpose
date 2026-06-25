@@ -1,13 +1,13 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║  TadPose — hmm_core                                              ║
+# ║  TadPose — markov_chain                                          ║
 # ║  « transition matrices and preferred-transition tests »          ║
 # ╠══════════════════════════════════════════════════════════════════╣
-# ║  Core HMM machinery: empirical transition matrix, a-priori       ║
-# ║  and global-null significance, and the transition figures.       ║
+# ║  Core Markov-chain machinery: the empirical transition matrix,   ║
+# ║  its a-priori / global-null significance, and the figures.       ║
 # ╚══════════════════════════════════════════════════════════════════╝
 """Transition matrices and preferred-transition tests.
 
-Core HMM machinery: empirical transition matrix, a-priori and global-null significance, and the transition figures.
+Core Markov chain machinery: empirical transition matrix, a-priori and global-null significance, and the transition figures.
 """
 import argparse
 from pathlib import Path
@@ -24,20 +24,20 @@ import networkx as nx
 from tadpose import config
 from tadpose.viz_constants import save_figure
 
-def plot_above_transitions(tadpole_hmm, ax=None):
+def plot_above_transitions(markov_chain, ax=None):
     """Plots a directed graph showing only significant above-average transitions with color-coded nodes and labels inside.
 
     Args:
-        tadpole_hmm (tadpoleHMM): An instance of the tadpoleHMM class.
+        markov_chain (TadpoleMarkovChain): An instance of the TadpoleMarkovChain class.
         ax (matplotlib.axes.Axes, optional): The axes to plot on. Defaults to None.
     """
 
-    transition_probs = tadpole_hmm.get_transition_probabilities()
-    preferred_transitions = tadpole_hmm.get_preferred_transitions()
+    transition_probs = markov_chain.get_transition_probabilities()
+    preferred_transitions = markov_chain.get_preferred_transitions()
 
     G = nx.DiGraph()
-    for i, from_label in enumerate(tadpole_hmm.labels):
-        for j, to_label in enumerate(tadpole_hmm.labels):
+    for i, from_label in enumerate(markov_chain.labels):
+        for j, to_label in enumerate(markov_chain.labels):
             if "above" in preferred_transitions[i, j]:
                 G.add_edge(from_label, to_label, weight=transition_probs[i, j])
 
@@ -71,20 +71,20 @@ def plot_above_transitions(tadpole_hmm, ax=None):
     ax.axis('off')
 
     return fig
-def plot_threshold_transitions(tadpole_hmm, ax=None, threshold=0.14):
+def plot_threshold_transitions(markov_chain, ax=None, threshold=0.14):
     """Plots a directed graph showing transitions above a given threshold, with color-coded nodes and labels inside.
 
     Args:
-        tadpole_hmm (tadpoleHMM): An instance of the tadpoleHMM class.
+        markov_chain (TadpoleMarkovChain): An instance of the TadpoleMarkovChain class.
         ax (matplotlib.axes.Axes, optional): The axes to plot on. Defaults to None.
         threshold (float, optional): The minimum transition probability to include an edge. Defaults to 0.20.
     """
 
-    transition_probs = tadpole_hmm.get_transition_probabilities()
+    transition_probs = markov_chain.get_transition_probabilities()
 
     G = nx.DiGraph()
-    for i, from_label in enumerate(tadpole_hmm.labels):
-        for j, to_label in enumerate(tadpole_hmm.labels):
+    for i, from_label in enumerate(markov_chain.labels):
+        for j, to_label in enumerate(markov_chain.labels):
             if transition_probs[i, j] >= threshold:  # Apply threshold filter
                 G.add_edge(from_label, to_label, weight=transition_probs[i, j])
 
@@ -119,18 +119,18 @@ def plot_threshold_transitions(tadpole_hmm, ax=None, threshold=0.14):
 
     return fig
 
-def plot_transition_matrix(tadpole_hmm, ax=None, cmap='viridis', annot=True):
+def plot_transition_matrix(markov_chain, ax=None, cmap='viridis', annot=True):
     """Plots the transition matrix as a heatmap with significance markers.
 
     Args:
-        tadpole_hmm (tadpoleHMM): An instance of the tadpoleHMM class.
+        markov_chain (TadpoleMarkovChain): An instance of the TadpoleMarkovChain class.
         ax (matplotlib.axes.Axes, optional): The axes to plot on. Defaults to None.
         cmap (str, optional): The colormap to use for the heatmap. Defaults to 'viridis'.
         annot (bool, optional): Whether to annotate the heatmap with transition probabilities. Defaults to True.
     """
 
-    transition_probs = tadpole_hmm.get_transition_probabilities()
-    preferred_transitions = tadpole_hmm.get_preferred_transitions()
+    transition_probs = markov_chain.get_transition_probabilities()
+    preferred_transitions = markov_chain.get_preferred_transitions()
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 8))  # Adjust size as needed
@@ -154,14 +154,14 @@ def plot_transition_matrix(tadpole_hmm, ax=None, cmap='viridis', annot=True):
     # Formatting
     ax.set_xlabel("To Label")
     ax.set_ylabel("From Label")
-    ax.set_xticks(np.arange(len(tadpole_hmm.labels)) + 0.5)
-    ax.set_yticks(np.arange(len(tadpole_hmm.labels)) + 0.5)
-    ax.set_xticklabels(tadpole_hmm.labels)
-    ax.set_yticklabels(tadpole_hmm.labels)
+    ax.set_xticks(np.arange(len(markov_chain.labels)) + 0.5)
+    ax.set_yticks(np.arange(len(markov_chain.labels)) + 0.5)
+    ax.set_xticklabels(markov_chain.labels)
+    ax.set_yticklabels(markov_chain.labels)
 
     return fig
 
-class tadpoleHMM:
+class TadpoleMarkovChain:
     def __init__(self, csv_file, label_column='agglom_3', npy_file='transition_matrix.npy', usecols=None):
         if usecols is None:
             usecols = ['trial_id', label_column]
@@ -266,24 +266,24 @@ class tadpoleHMM:
         return self.preferred_transitions
 
 def main() -> None:
-    """CLI: build an HMM from a label array and save the transition figures."""
+    """CLI: build an Markov chain from a label array and save the transition figures."""
     root = config.data_root() / "cluster_analysis"
-    parser = argparse.ArgumentParser(description="HMM transition analysis.")
+    parser = argparse.ArgumentParser(description="Markov chain transition analysis.")
     parser.add_argument("--labels", type=Path,
                         default=root / "tadpole_ids_trial_ids_well_type_ids_and_labels.npy",
                         help="Label array (.npy) or labelled CSV.")
     parser.add_argument("--output-dir", type=Path,
-                        default=root / "figures_HMM",
+                        default=root / "figures_Markov chain",
                         help="Directory for the transition figures.")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    tadpole_hmm = tadpoleHMM(str(args.labels))
-    tadpole_hmm.process_data()
+    markov_chain = TadpoleMarkovChain(str(args.labels))
+    markov_chain.process_data()
     figures = [
-        (plot_transition_matrix(tadpole_hmm), "transition_mat"),
-        (plot_above_transitions(tadpole_hmm), "above_apriori_states"),
-        (plot_threshold_transitions(tadpole_hmm), "above_global_null"),
+        (plot_transition_matrix(markov_chain), "transition_mat"),
+        (plot_above_transitions(markov_chain), "above_apriori_states"),
+        (plot_threshold_transitions(markov_chain), "above_global_null"),
     ]
     for fig, name in figures:
         save_figure(fig, args.output_dir / name)

@@ -17,10 +17,10 @@ _COMMANDS: dict[str, str] = {
     "config":          "tadpose.config",
     "assign-clusters": "tadpose.analysis.assign_new_data_to_clusters",
     "label":           "tadpose.analysis.generate_new_labelling",
-    "hmm":             "tadpose.analysis.hmm_core",
-    "hmm-groups":      "tadpose.analysis.hmm_bio",
-    "cluster-meta":    "tadpose.cluster_meta",
-    "metrics":         "tadpose.analysis.internal_metrics",
+    "markov-chain":        "tadpose.analysis.markov_chain",
+    "markov-chain-groups": "tadpose.analysis.markov_chain_groups",
+    "cluster-meta":        "tadpose.cluster_meta",
+    "metrics":             "tadpose.analysis.internal_metrics",
 }
 
 

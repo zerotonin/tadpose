@@ -1,13 +1,13 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║  TadPose — hmm_bio                                               ║
-# ║  « grouped HMM comparison across conditions »                    ║
+# ║  TadPose — markov_chain_groups                                   ║
+# ║  « grouped Markov-chain comparison across conditions »           ║
 # ╠══════════════════════════════════════════════════════════════════╣
-# ║  Builds and plots transition HMMs per experimental group         ║
+# ║  Builds and plots transition matrices per experimental group     ║
 # ║  (PTZ dose series, 4-AP, neurod2) for biological comparison.     ║
 # ╚══════════════════════════════════════════════════════════════════╝
-"""Grouped HMM comparison across conditions.
+"""Grouped Markov chain comparison across conditions.
 
-Builds and plots transition HMMs per experimental group (PTZ dose series, 4-AP, neurod2) for biological comparison.
+Builds and plots transition matrices per experimental group (PTZ dose series, 4-AP, neurod2) for biological comparison.
 """
 import os
 from pathlib import Path
@@ -24,13 +24,13 @@ import networkx as nx
 from tadpose import config
 from tadpose.viz_constants import save_figure
 
-def plot_above_transitions(tadpole_hmm, ax=None):
-    transition_probs = tadpole_hmm.get_transition_probabilities()
-    preferred_transitions = tadpole_hmm.get_preferred_transitions()
+def plot_above_transitions(markov_chain, ax=None):
+    transition_probs = markov_chain.get_transition_probabilities()
+    preferred_transitions = markov_chain.get_preferred_transitions()
 
     G = nx.DiGraph()
-    for i, from_label in enumerate(tadpole_hmm.labels):
-        for j, to_label in enumerate(tadpole_hmm.labels):
+    for i, from_label in enumerate(markov_chain.labels):
+        for j, to_label in enumerate(markov_chain.labels):
             if "above" in preferred_transitions[i, j]:
                 G.add_edge(from_label, to_label, weight=transition_probs[i, j])
 
@@ -87,12 +87,12 @@ def plot_above_transitions(tadpole_hmm, ax=None):
     return fig
 
 
-def plot_threshold_transitions(tadpole_hmm, ax=None, threshold=0.14):
-    transition_probs = tadpole_hmm.get_transition_probabilities()
+def plot_threshold_transitions(markov_chain, ax=None, threshold=0.14):
+    transition_probs = markov_chain.get_transition_probabilities()
 
     G = nx.DiGraph()
-    for i, from_label in enumerate(tadpole_hmm.labels):
-        for j, to_label in enumerate(tadpole_hmm.labels):
+    for i, from_label in enumerate(markov_chain.labels):
+        for j, to_label in enumerate(markov_chain.labels):
             if transition_probs[i, j] >= threshold:
                 G.add_edge(from_label, to_label, weight=transition_probs[i, j])
 
@@ -133,9 +133,9 @@ def plot_threshold_transitions(tadpole_hmm, ax=None, threshold=0.14):
     return fig
 
 
-def plot_transition_matrix(tadpole_hmm, ax=None, cmap='viridis', annot=True):
-    transition_probs = tadpole_hmm.get_transition_probabilities()
-    preferred_transitions = tadpole_hmm.get_preferred_transitions()
+def plot_transition_matrix(markov_chain, ax=None, cmap='viridis', annot=True):
+    transition_probs = markov_chain.get_transition_probabilities()
+    preferred_transitions = markov_chain.get_preferred_transitions()
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 8))
@@ -168,15 +168,15 @@ def plot_transition_matrix(tadpole_hmm, ax=None, cmap='viridis', annot=True):
 
     ax.set_xlabel("To Label")
     ax.set_ylabel("From Label")
-    ax.set_xticks(np.arange(len(tadpole_hmm.labels)) + 0.5)
-    ax.set_yticks(np.arange(len(tadpole_hmm.labels)) + 0.5)
-    ax.set_xticklabels(tadpole_hmm.labels)
-    ax.set_yticklabels(tadpole_hmm.labels)
+    ax.set_xticks(np.arange(len(markov_chain.labels)) + 0.5)
+    ax.set_yticks(np.arange(len(markov_chain.labels)) + 0.5)
+    ax.set_xticklabels(markov_chain.labels)
+    ax.set_yticklabels(markov_chain.labels)
 
     return fig
 
 
-class tadpoleHMM:
+class TadpoleMarkovChain:
     def __init__(self, df, label_column='agglom_7', npy_file='transition_matrix.npy'):
         self.npy_file = npy_file
         self.label_column = label_column
@@ -278,25 +278,25 @@ class tadpoleHMM:
         return self.preferred_transitions
 
 
-class TadpoleHMMGroupAnalysis:
+class TadpoleMarkovChainGroupAnalysis:
     def __init__(self, csv_file, label_column='agglom_7', npy_file_base='transition_matrix'):
         self.csv_file = csv_file
         self.label_column = label_column
         self.npy_file_base = npy_file_base
         self.data = pd.read_csv(self.csv_file).dropna(subset=[self.label_column])
 
-    def create_and_process_hmm(self, group_data, group_name):
+    def create_and_process_chain(self, group_data, group_name):
         # Ensure group_name is filesystem-friendly
         safe_group_name = "".join([c if c.isalnum() or c in (' ', '_', '-') else '_' for c in group_name])
         npy_file = f"{self.npy_file_base}_{safe_group_name}.npy"
-        tadpole_hmm = tadpoleHMM(group_data, self.label_column, npy_file)
-        tadpole_hmm.process_data()
-        return tadpole_hmm
+        markov_chain = TadpoleMarkovChain(group_data, self.label_column, npy_file)
+        markov_chain.process_data()
+        return markov_chain
 
-    def plot_and_save_hmms(self, group_categories, output_dir_base):
+    def plot_and_save_chains(self, group_categories, output_dir_base):
         """
         Processes each category in group_categories, creates separate folders,
-        and saves all associated HMM plots inside their respective folders.
+        and saves all associated Markov chain plots inside their respective folders.
 
         Parameters:
         - group_categories (dict): Dictionary containing categories with their criteria and labels.
@@ -342,13 +342,13 @@ class TadpoleHMMGroupAnalysis:
                     print(f"    Warning: No data found for label '{label}' with criteria {criteria}. Skipping.")
                     continue
 
-                # Create and process HMM
-                tadpole_hmm = self.create_and_process_hmm(group_data, label)
+                # Create and process Markov chain
+                markov_chain = self.create_and_process_chain(group_data, label)
                 
-                # Plotting HMM graphs
-                fig1 = plot_transition_matrix(tadpole_hmm)
-                fig2 = plot_above_transitions(tadpole_hmm)
-                fig3 = plot_threshold_transitions(tadpole_hmm)
+                # Plotting Markov chain graphs
+                fig1 = plot_transition_matrix(markov_chain)
+                fig2 = plot_above_transitions(markov_chain)
+                fig3 = plot_threshold_transitions(markov_chain)
 
                 # Append figure and names to save
                 figure_info.append((fig1, f'{label}_transition_mat'))
@@ -361,7 +361,7 @@ class TadpoleHMMGroupAnalysis:
                 print(f"    Saved figure: {name}")
                 plt.close(fig)  # Close the figure to free memory
 
-        print('HMM analysis completed for all categories.')
+        print('Markov chain analysis completed for all categories.')
 
 
 
@@ -417,11 +417,11 @@ EXAMPLE_GROUP_CATEGORIES = {
 
 
 def main() -> None:
-    """CLI: run grouped HMM comparisons and save the per-category figures."""
+    """CLI: run grouped Markov chain comparisons and save the per-category figures."""
     import argparse
 
     root = config.data_root() / "cluster_analysis"
-    parser = argparse.ArgumentParser(description="Grouped HMM comparison.")
+    parser = argparse.ArgumentParser(description="Grouped Markov chain comparison.")
     parser.add_argument("--csv-file", type=Path,
                         default=root / "tadpole_ids_trial_ids_well_type_ids_and_labels.csv",
                         help="Labelled per-frame CSV with id columns.")
@@ -430,8 +430,8 @@ def main() -> None:
                         help="Base directory for the per-category figures.")
     args = parser.parse_args()
 
-    hmm_analysis = TadpoleHMMGroupAnalysis(str(args.csv_file))
-    hmm_analysis.plot_and_save_hmms(EXAMPLE_GROUP_CATEGORIES, str(args.output_dir))
+    chain_analysis = TadpoleMarkovChainGroupAnalysis(str(args.csv_file))
+    chain_analysis.plot_and_save_chains(EXAMPLE_GROUP_CATEGORIES, str(args.output_dir))
 
 
 if __name__ == "__main__":

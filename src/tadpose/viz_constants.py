@@ -193,7 +193,7 @@ def save_figure(
 # │   ├── centroids/          ← posture + kinematics per cluster
 # │   ├── proportions/        ← bar/scatter/box proportion plots
 # │   ├── velocity/           ← mean velocity comparison plots
-# │   ├── hmm/                ← transition graphs
+# │   ├── markov_chain/       ← transition graphs
 # │   └── summary/            ← combined multi-panel figures
 # ├── stats/                  ← CSV tables of test results
 # └── data/                   ← CSV exports of plotted data
@@ -211,9 +211,9 @@ def make_results_tree(base: Path) -> dict[str, Path]:
     dirs = {
         "figures_centroids":   base / "figures" / "centroids",
         "figures_proportions": base / "figures" / "proportions",
-        "figures_velocity":    base / "figures" / "velocity",
-        "figures_hmm":         base / "figures" / "hmm",
-        "figures_summary":     base / "figures" / "summary",
+        "figures_velocity":      base / "figures" / "velocity",
+        "figures_markov_chain":  base / "figures" / "markov_chain",
+        "figures_summary":       base / "figures" / "summary",
         "stats":               base / "stats",
         "data":                base / "data",
     }

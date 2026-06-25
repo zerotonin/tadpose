@@ -67,10 +67,10 @@ Post-clustering analysis
 .. automodule:: tadpose.analysis.cluster_map
    :members:
 
-.. automodule:: tadpose.analysis.hmm_core
+.. automodule:: tadpose.analysis.markov_chain
    :members:
 
-.. automodule:: tadpose.analysis.hmm_bio
+.. automodule:: tadpose.analysis.markov_chain_groups
    :members:
 
 .. automodule:: tadpose.analysis.assign_new_data_to_clusters

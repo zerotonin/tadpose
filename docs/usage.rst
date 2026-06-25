@@ -15,7 +15,8 @@ dispatches to one subcommand per pipeline stage:
    tadpose <stage> --help         # options for an individual stage
 
 Available stages include ``config``, ``assign-clusters``, ``label``,
-``hmm``, ``hmm-groups``, ``cluster-meta`` and ``metrics``.  Each stage
+``markov-chain``, ``markov-chain-groups``, ``cluster-meta`` and ``metrics``.
+Each stage
 derives its default input and output paths from
 :func:`tadpose.config.data_root`, so a correctly filled ``local_paths.json``
 (see :doc:`installation`) is all that is required to run a stage on a new

@@ -62,7 +62,7 @@ file or database intermediates between them:
 7. **Post-clustering analysis** (:mod:`tadpose.analysis`) — per-trial
    cluster proportions, group comparisons via
    `reRandomStats <https://github.com/zerotonin/reRandomStats>`_, hidden
-   Markov transition structure, and centroid visualisation.
+   Markov-chain transition structure, and centroid visualisation.
 
 What the method recovers
 ------------------------
