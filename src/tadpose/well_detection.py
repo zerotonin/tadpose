@@ -92,9 +92,12 @@ def _rotate_points(
 
 def _principal_angle(xy: NDArray[np.floating]) -> float:
     """Angle (rad) of the major axis of a 2-D point cloud."""
+    # Covariance is symmetric: eigh returns real eigenpairs (ascending), so
+    # the major axis is the last column.  np.linalg.eig can return complex
+    # dtypes for near-degenerate clouds, which arctan2 rejects.
     cov = np.cov(xy.T)
-    eigvals, eigvecs = np.linalg.eig(cov)
-    axis = eigvecs[:, np.argmax(eigvals)]
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    axis = eigvecs[:, int(np.argmax(eigvals))]
     return float(np.arctan2(axis[1], axis[0]))
 
 
