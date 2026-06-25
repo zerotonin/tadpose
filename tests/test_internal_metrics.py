@@ -31,6 +31,21 @@ def test_compute_inertia_matches_manual():
     assert im.compute_inertia(X, centroids, labels) == pytest.approx(4.0)
 
 
+def test_compute_inertia_with_column_subset():
+    # A wider matrix whose clustering used only columns [0, 2]; the unused
+    # column 1 must not contribute to the inertia.
+    X = np.array([[0.0, 999.0, 0.0], [2.0, -999.0, 0.0]])
+    centroids = np.array([[1.0, 0.0]])
+    labels = np.array([0, 0])
+    assert im.compute_inertia(X, centroids, labels, columns=[0, 2]) == pytest.approx(2.0)
+
+
+def test_parse_columns_expands_ranges():
+    assert im.parse_columns("0,1,2,16-28") == [0, 1, 2, *range(16, 29)]
+    assert im.parse_columns(None) is None
+    assert im.parse_columns("5") == [5]
+
+
 def test_compute_inertia_chunking_is_invariant():
     rng = np.random.default_rng(0)
     X = rng.standard_normal((1000, 5))

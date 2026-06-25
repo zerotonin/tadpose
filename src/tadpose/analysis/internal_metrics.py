@@ -43,6 +43,7 @@ def compute_inertia(
     centroids: np.ndarray,
     labels: np.ndarray,
     chunk_size: int = 1_000_000,
+    columns: Sequence[int] | None = None,
 ) -> float:
     """Within-cluster sum of squared distances — the k-means objective W(k).
 
@@ -55,6 +56,11 @@ def compute_inertia(
         centroids:  Centroid matrix, ``(n_clusters, n_features)``.
         labels:     Per-sample cluster assignment, ``(n_samples,)``.
         chunk_size: Rows per streaming chunk.
+        columns:    Optional column subset to select per chunk so that X
+                    matches the feature space the clustering used (e.g. the
+                    16-column velocity + posture-diff subset of a wider
+                    feature matrix).  Selection happens per chunk so memory
+                    stays bounded.
 
     Returns:
         Scalar inertia, matching ``KMeans.inertia_`` for a converged fit.
@@ -63,7 +69,10 @@ def compute_inertia(
     total = 0.0
     for start in range(0, n, chunk_size):
         end = min(start + chunk_size, n)
-        residuals = X[start:end] - centroids[labels[start:end]]
+        chunk = X[start:end]
+        if columns is not None:
+            chunk = chunk[:, columns]
+        residuals = chunk - centroids[labels[start:end]]
         total += float((residuals * residuals).sum())
     return total
 
@@ -77,6 +86,7 @@ def compute_silhouette_stratified(
     n_per_cluster: int = 5000,
     n_repeats: int = 50,
     rng: np.random.Generator | None = None,
+    columns: Sequence[int] | None = None,
 ) -> dict[str, float | np.ndarray]:
     r"""Mean silhouette score via stratified per-cluster subsampling.
 
@@ -96,6 +106,8 @@ def compute_silhouette_stratified(
         n_per_cluster: Samples per cluster per repeat.
         n_repeats:     Number of independent subsamples.
         rng:           NumPy generator; default-seeded if None.
+        columns:       Optional column subset (applied to each subsample) so
+                       X matches the clustered feature space.
 
     Returns:
         Dict with ``mean_silhouette`` (median over repeats),
@@ -118,8 +130,11 @@ def compute_silhouette_stratified(
             idx_parts.append(rng.choice(members, size=take, replace=False))
         idx = np.concatenate(idx_parts)
 
+        sub = X[idx]
+        if columns is not None:
+            sub = sub[:, columns]
         from sklearn.metrics import silhouette_samples  # lazy — see module top
-        s_samples = silhouette_samples(X[idx], labels[idx])
+        s_samples = silhouette_samples(sub, labels[idx])
         per_repeat_overall.append(float(s_samples.mean()))
         per_repeat_per_cluster.append(
             np.array([s_samples[labels[idx] == u].mean() for u in unique])
@@ -158,13 +173,13 @@ def _labels_path_from_meta(meta_path: Path, content: dict) -> Path | None:
 
 
 def _recompute_inertia_one(
-    args: tuple[str, str, bool, tuple[float, ...] | None],
+    args: tuple[str, str, bool, tuple[float, ...] | None, tuple[int, ...] | None],
 ) -> dict | None:
     """Worker for parallel inertia back-fill.
 
     Kept at module level so ``ProcessPoolExecutor`` can pickle it.
     """
-    jpath_str, data_path_str, overwrite, reduction_filter = args
+    jpath_str, data_path_str, overwrite, reduction_filter, columns = args
     jpath = Path(jpath_str)
     data_path = Path(data_path_str)
 
@@ -205,7 +220,7 @@ def _recompute_inertia_one(
     if x_used.shape[0] != labels.shape[0]:
         return None
 
-    inertia = compute_inertia(x_used, centroids, labels)
+    inertia = compute_inertia(x_used, centroids, labels, columns=columns)
     if overwrite:
         content["inertia"] = inertia
         jpath.write_text(json.dumps(content), encoding="utf-8")
@@ -226,6 +241,7 @@ def recompute_inertia_for_meta_dir(
     overwrite: bool = False,
     workers: int = 1,
     reduction_percents: Sequence[float] | None = None,
+    feature_columns: Sequence[int] | None = None,
 ) -> pd.DataFrame:
     """Back-fill ``inertia`` for every metadata JSON under ``meta_dir``.
 
@@ -250,7 +266,8 @@ def recompute_inertia_for_meta_dir(
     """
     json_paths = sorted(Path(meta_dir).rglob("*.json"))
     filt = tuple(reduction_percents) if reduction_percents is not None else None
-    worker_args = [(str(p), str(data_path), overwrite, filt) for p in json_paths]
+    cols = tuple(feature_columns) if feature_columns is not None else None
+    worker_args = [(str(p), str(data_path), overwrite, filt, cols) for p in json_paths]
 
     rows: list[dict] = []
     if workers <= 1:
@@ -427,6 +444,7 @@ def _silhouette_per_k(
     k_values: Sequence[int],
     n_per_cluster: int,
     n_repeats: int,
+    columns: Sequence[int] | None = None,
 ) -> dict[int, tuple[float, float, float]]:
     """Stratified silhouette for one representative fit per k."""
     from tadpose.clustering import leave_out
@@ -439,15 +457,36 @@ def _silhouette_per_k(
         if labels_path is None or not labels_path.exists():
             continue
         labels = np.load(labels_path)
-        x_used = np.asarray(
-            leave_out(data, rep["reduction_percent"], rep["cut_position_percent"])
-        )
+        # leave_out returns a mmap view; column selection is applied inside
+        # compute_silhouette_stratified on the small subsample, not here.
+        x_used = leave_out(data, rep["reduction_percent"], rep["cut_position_percent"])
         res = compute_silhouette_stratified(
-            x_used, labels, n_per_cluster=n_per_cluster, n_repeats=n_repeats
+            x_used, labels, n_per_cluster=n_per_cluster, n_repeats=n_repeats,
+            columns=columns,
         )
         low, high = res["iqr_silhouette"]
         out[int(k)] = (res["mean_silhouette"], low, high)
     return out
+
+
+def parse_columns(spec: str | None) -> list[int] | None:
+    """Parse a column spec like ``"0,1,2,16-28"`` into a list of indices.
+
+    Needed when the clustering used a subset of a wider feature matrix
+    (e.g. the published sweep clustered velocity + posture-diff columns
+    ``0,1,2,16-28`` out of a 29-column matrix).
+    """
+    if not spec:
+        return None
+    cols: list[int] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if "-" in part:
+            lo, hi = part.split("-")
+            cols.extend(range(int(lo), int(hi) + 1))
+        elif part:
+            cols.append(int(part))
+    return cols
 
 
 def main() -> None:
@@ -465,6 +504,9 @@ def main() -> None:
     ap.add_argument("--reduction-percent", type=float, default=0.0,
                     help="Only summarise fits at this leave-out level (default full data).")
     ap.add_argument("--workers", type=int, default=1)
+    ap.add_argument("--feature-columns", type=str, default=None,
+                    help="Column subset the clustering used, e.g. '0,1,2,16-28' "
+                         "when a 16-feature fit came from a wider matrix.")
     ap.add_argument("--silhouette", action="store_true",
                     help="Also compute stratified silhouette per k (expensive).")
     ap.add_argument("--silhouette-n-per-cluster", type=int, default=2000)
@@ -472,10 +514,12 @@ def main() -> None:
     ap.add_argument("--plot", type=Path, default=None,
                     help="Base path (no extension) for the selection figure.")
     args = ap.parse_args()
+    columns = parse_columns(args.feature_columns)
 
     fits = recompute_inertia_for_meta_dir(
         args.meta_dir, args.data_file, overwrite=False,
         workers=args.workers, reduction_percents=[args.reduction_percent],
+        feature_columns=columns,
     )
     if fits.empty:
         raise SystemExit("No clustering fits found under --meta-dir.")
@@ -492,6 +536,7 @@ def main() -> None:
         per_k = _silhouette_per_k(
             fits, args.data_file, k_values,
             args.silhouette_n_per_cluster, args.silhouette_n_repeats,
+            columns=columns,
         )
         sil = [per_k.get(k, (np.nan,) * 3)[0] for k in k_values]
         sil_low = [per_k.get(k, (np.nan,) * 3)[1] for k in k_values]
