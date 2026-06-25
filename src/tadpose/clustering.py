@@ -79,6 +79,21 @@ def leave_out(
 # │ Output paths  « structured directory for SLURM results »     │
 # └──────────────────────────────────────────────────────────────┘
 
+def _result_stem(tag: str, k: int, del_size: int, del_pos: int, kind: str) -> str:
+    """Filename stem shared by the centroids/labels/meta outputs of a run."""
+    return f"{tag}_{kind}_k{k}_delSize{del_size}_delPosP{del_pos}"
+
+
+def meta_path(parent: Path, tag: str, k: int, del_size: int, del_pos: int) -> Path:
+    """Path to a run's meta JSON, **without** creating any directories.
+
+    Used by the SLURM submit scripts to check whether a (k, del_size,
+    del_pos) combination has already been clustered.
+    """
+    base = parent / tag / f"delSize_{del_size}" / f"k_{k}"
+    return base / f"{_result_stem(tag, k, del_size, del_pos, 'meta')}.json"
+
+
 def make_output_paths(
     parent: Path,
     tag: str,
@@ -99,20 +114,16 @@ def make_output_paths(
         full file paths.
     """
     base = parent / tag / f"delSize_{del_size}" / f"k_{k}"
-    stem = f"{tag}_{{kind}}_k{k}_delSize{del_size}_delPosP{del_pos}"
-
-    paths = {}
-    for kind, ext, subdir in [
-        ("centroids", "npy", "centroids"),
-        ("labels", "npy", "labels"),
-        ("meta", "json", ""),
-    ]:
-        d = base / subdir if subdir else base
-        d.mkdir(parents=True, exist_ok=True)
-        paths[kind] = d / stem.format(kind=kind).replace("{kind}", kind)
-        # fix the double-replacement — just build the name directly
-        paths[kind] = d / f"{tag}_{kind}_k{k}_delSize{del_size}_delPosP{del_pos}.{ext}"
-
+    layout = {
+        "centroids": ("centroids", "npy"),
+        "labels": ("labels", "npy"),
+        "meta": ("", "json"),
+    }
+    paths: dict[str, Path] = {}
+    for kind, (subdir, ext) in layout.items():
+        directory = base / subdir if subdir else base
+        directory.mkdir(parents=True, exist_ok=True)
+        paths[kind] = directory / f"{_result_stem(tag, k, del_size, del_pos, kind)}.{ext}"
     return paths
 
 
@@ -210,10 +221,20 @@ def main() -> None:
     ap.add_argument("-dp", "--del-pos",       type=int, required=True,
                     help="Leave-out start position (%%)")
     ap.add_argument("-rs", "--random-state",  type=int, default=0)
-    ap.add_argument("-df", "--data-file",     type=Path, required=True)
+    ap.add_argument("-df", "--data-file",     type=Path, required=False)
     ap.add_argument("-sd", "--save-dir",      type=Path, default=Path("."))
+    ap.add_argument("--print-meta-path", action="store_true",
+                    help="Print the meta JSON path and exit (SLURM done-check).")
 
     args = ap.parse_args()
+
+    if args.print_meta_path:
+        print(meta_path(args.save_dir, args.tag, args.n_clusters,
+                        args.del_size, args.del_pos))
+        return
+
+    if args.data_file is None:
+        ap.error("-df/--data-file is required unless --print-meta-path is set")
     run_kmeans(
         args.tag, args.n_clusters, args.del_size, args.del_pos,
         args.random_state, args.data_file, args.save_dir,
