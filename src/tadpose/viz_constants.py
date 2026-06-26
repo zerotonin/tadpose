@@ -64,6 +64,23 @@ BEHAVIOUR_COLOURS: dict[str, str] = {
     "still":               WONG["black"],            # at rest
 }
 
+# Paul Tol *muted* qualitative palette — colourblind-safe and distinct for
+# all ten behavioural groups at once (BEHAVIOUR_COLOURS reuses a Wong hue for
+# the swimming family, which is fine on prototype cards but clashes in a
+# 10-way pie / group-comparison figure, so those use this instead).
+TOL_MUTED: dict[str, str] = {
+    "csc":                 "#CC6677",   # rose
+    "csc_edge":            "#882255",   # wine
+    "utb":                 "#332288",   # indigo
+    "impact_compression":  "#88CCEE",   # cyan
+    "head_bobbing":        "#44AA99",   # teal
+    "flip":                "#DDCC77",   # sand
+    "saccade":             "#117733",   # green
+    "undulatory_swimming": "#999933",   # olive
+    "regular_swimming":    "#AAAAAA",   # grey
+    "still":               "#000000",   # black
+}
+
 # Short labels for legends and tables
 BEHAVIOUR_LABELS: dict[str, str] = {
     "csc":                 "C-SC",
