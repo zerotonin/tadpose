@@ -29,6 +29,23 @@ def test_rotate_points_90_degrees_about_origin():
     assert rotated[0, 1] == pytest.approx(-1.0, abs=1e-6)
 
 
+def test_find_24_circles_relaxes_param2_for_low_contrast(monkeypatch):
+    """The accumulator-threshold sweep recovers faint plates that the
+    param1-only search misses."""
+    grid = _perfect_grid(sep=100.0)
+    circles = np.column_stack([grid, np.full(len(grid), 40.0)])[None, :, :]
+
+    def fake_hough(grey, param1=11, param2=61):
+        # only a relaxed accumulator threshold finds the (faint) wells
+        return circles if param2 <= 30 else None
+
+    monkeypatch.setattr(wd.WellDetector, "_hough_detect", staticmethod(fake_hough))
+    img = np.zeros((720, 1280, 3), dtype=np.uint8)
+    det = wd.WellDetector(img)
+    assert det.detection_ok
+    assert len(det.centres) == wd.N_WELLS
+
+
 def test_principal_angle_of_horizontal_cloud_is_zero():
     xy = np.column_stack([np.linspace(-5, 5, 50), np.zeros(50)])
     angle = wd._principal_angle(xy)
