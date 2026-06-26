@@ -39,31 +39,35 @@ def compare_groups(
     value_col: str,
     group_col: str,
     *,
-    alpha: float = 0.05,
+    test: str = "Fisher:meanDiff",
+    combination_n: int | str = 10_000,
+    correction_type: str = "fdr_bh",
 ) -> pd.DataFrame:
     """Compare a continuous measure across experimental groups.
 
-    Runs the full MultiGroupTest pipeline:
-      1. Shapiro-Wilk per group → decide parametric vs non-parametric
-      2. Omnibus test (ANOVA or Kruskal-Wallis)
-      3. Pairwise post-hoc with BH-FDR correction
+    Runs pairwise **Fisher resampling** (permutation) tests across every
+    group pair via :class:`rerandomstats.MultiGroupTest`, correcting the
+    p-values with **Benjamini-Hochberg FDR** by default.
 
     Args:
-        df:        DataFrame with at least *value_col* and *group_col*.
-        value_col: Column containing the continuous measurement
-                   (e.g. cluster proportion, mean velocity).
-        group_col: Column identifying the experimental group.
-        alpha:     Significance level.
+        df:              DataFrame with at least *value_col* and *group_col*.
+        value_col:       Continuous measurement (e.g. cluster proportion).
+        group_col:       Experimental-group identifier.
+        test:            reRandomStats ``family:name`` spec; default Fisher
+                         resampling on the mean difference.
+        combination_n:   Permutations per comparison (``"all"`` for exact).
+        correction_type: Multiple-comparison correction (default BH-FDR).
 
     Returns:
-        DataFrame of pairwise comparisons with columns: group_1,
-        group_2, test_used, statistic, p_value, p_adjusted, significant.
+        DataFrame with one row per group pair: ``groupA``, ``groupB``,
+        their n, ``p value``, ``p value corrected``, ``h`` and ``sig. level``.
     """
     mgt = MultiGroupTest(
-        data=df,
-        value_col=value_col,
-        group_col=group_col,
-        alpha=alpha,
+        list(df[value_col]),
+        list(df[group_col]),
+        test,
+        combination_n=combination_n,
+        correction_type=correction_type,
     )
     return mgt.main()
 
@@ -144,34 +148,33 @@ def permutation_test_proportions(
     group_a: pd.Series,
     group_b: pd.Series,
     *,
-    n_resamples: int = 10_000,
+    func: str = "meanDiff",
+    n_resamples: int | str = 10_000,
     alpha: float = 0.05,
 ) -> dict[str, float]:
-    """Resampling-based test for difference in proportions.
+    """Fisher resampling (permutation) test for a difference between groups.
 
-    Uses rerandomstats.FisherResamplingTest under the hood.
+    Uses :class:`rerandomstats.FisherResamplingTest`; ``main()`` returns the
+    two-sided permutation p-value.
 
     Args:
-        group_a:      Proportion values for group A.
-        group_b:      Proportion values for group B.
-        n_resamples:  Number of resampling iterations.
-        alpha:        Significance level.
+        group_a:     Values for group A.
+        group_b:     Values for group B.
+        func:        Statistic to resample (``meanDiff`` / ``medianDiff`` /
+                     ``sumDiff``).
+        n_resamples: Permutations (``"all"`` for the exact test).
+        alpha:       Significance threshold.
 
     Returns:
-        Dict with keys: observed_diff, p_value, significant, ci_lower,
-        ci_upper.
+        Dict with ``observed_diff``, ``p_value`` and ``significant``.
     """
-    frt = FisherResamplingTest(
-        group_a=group_a.values,
-        group_b=group_b.values,
-        n_resamples=n_resamples,
-        alpha=alpha,
-    )
-    result = frt.main()
+    import numpy as np
+
+    a = np.asarray(group_a, dtype=float)
+    b = np.asarray(group_b, dtype=float)
+    p_value = float(FisherResamplingTest(list(a), list(b), func, n_resamples).main())
     return {
-        "observed_diff": result.get("observed_diff", float("nan")),
-        "p_value": result.get("p_value", float("nan")),
-        "significant": result.get("significant", False),
-        "ci_lower": result.get("ci_lower", float("nan")),
-        "ci_upper": result.get("ci_upper", float("nan")),
+        "observed_diff": float(a.mean() - b.mean()),
+        "p_value": p_value,
+        "significant": p_value < alpha,
     }
