@@ -256,6 +256,7 @@ class WellDetector:
     def _hough_detect(
         grey: NDArray[np.uint8],
         param1: int = _P1_INIT,
+        param2: int = _P2,
     ) -> Optional[NDArray[np.floating]]:
         """Run Hough circle transform on a down-scaled image.
 
@@ -271,7 +272,7 @@ class WellDetector:
         circles = cv.HoughCircles(
             blurred, cv.HOUGH_GRADIENT, dp=1,
             minDist=sh / 8,
-            param1=param1, param2=_P2,
+            param1=param1, param2=param2,
             minRadius=int(sh * _MIN_R_FACTOR),
             maxRadius=int(sh * _MAX_R_FACTOR),
         )
@@ -290,24 +291,32 @@ class WellDetector:
         """Adjust Hough param1 until 24-30 circles emerge, then keep
         the 24 with radii closest to the median.
 
+        The accumulator threshold ``param2`` is relaxed in an outer sweep so
+        that low-contrast plates (faint well rims) are still detected — the
+        inner ``param1`` gradient sweep alone cannot recover them.
+
         Returns:
             (24, 3) sorted (x, y, r) array, or empty on failure.
         """
-        p1 = _P1_INIT
-
-        for _ in range(_SEARCH_LIMIT):
-            circles = self._hough_detect(grey, param1=p1)
-            n = 0 if circles is None else circles.shape[1]
-
-            if _N_MIN <= n <= _N_MAX:
+        circles = None
+        for param2 in (_P2, 50, 40, 30, 25, 20, 15):
+            p1 = _P1_INIT
+            for _ in range(_SEARCH_LIMIT):
+                circles = self._hough_detect(grey, param1=p1, param2=param2)
+                n = 0 if circles is None else circles.shape[1]
+                if _N_MIN <= n <= _N_MAX:
+                    break
+                elif n < _N_MIN:
+                    p1 -= 2
+                    if p1 < 1:
+                        break                         # relax param2 next
+                else:
+                    p1 += 2
+            if circles is not None and _N_MIN <= circles.shape[1] <= _N_MAX:
                 break
-            elif n < _N_MIN:
-                p1 -= 2
-                if p1 < 1:
-                    return np.empty(0)
-            else:
-                p1 += 2
         else:
+            return np.empty(0)
+        if circles is None or not (_N_MIN <= circles.shape[1] <= _N_MAX):
             return np.empty(0)
 
         pts = circles.squeeze(axis=0)
