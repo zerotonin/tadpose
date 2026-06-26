@@ -78,6 +78,102 @@ def compute_inertia(
 
 
 # ─────────────────────────────────────────────────────────────────
+#  Instability  (centroid-matching stability across attempts)
+# ─────────────────────────────────────────────────────────────────
+def compute_instability(centroids_list: Sequence[np.ndarray]) -> np.ndarray:
+    """Per-attempt instability for repeated clusterings at one (k, reduction).
+
+    For each pair of clustering attempts the centroid sets are matched
+    optimally (Hungarian assignment on the Euclidean cost matrix) and the
+    matched distance summed.  The most stable attempt is the one with the
+    smallest total distance to all others; each attempt's instability is its
+    matched distance to that reference attempt.  Lower is more stable.
+
+    Args:
+        centroids_list: One ``(k, n_features)`` centroid array per attempt.
+
+    Returns:
+        ``(n_attempts,)`` instability values (the reference attempt scores 0).
+        Empty input → empty array; a single attempt → ``[0.0]``.
+    """
+    from scipy.optimize import linear_sum_assignment
+
+    n = len(centroids_list)
+    if n == 0:
+        return np.empty(0)
+    if n == 1:
+        return np.zeros(1)
+    distances = np.zeros((n, n))
+    for i in range(n):
+        for j in range(i + 1, n):
+            cost = np.linalg.norm(
+                centroids_list[i][:, np.newaxis, :] - centroids_list[j], axis=2
+            )
+            row, col = linear_sum_assignment(cost)
+            total = cost[row, col].sum()
+            distances[i, j] = distances[j, i] = total
+    reference = int(np.argmin(distances.sum(axis=0)))
+    return distances[:, reference]
+
+
+def gather_meta_metrics(
+    meta_dir: Path,
+    reductions: Sequence[float] | None = None,
+) -> pd.DataFrame:
+    """Walk clustering metadata JSONs for the cheap (meta-only) metrics.
+
+    Reads each fit's Calinski-Harabasz score and centroids (no feature
+    matrix needed), and computes :func:`compute_instability` per
+    ``(k, reduction_percent)`` group.  This is the fast half of the selection
+    sweep; inertia and silhouette (which need the feature matrix) are added
+    separately.
+
+    Args:
+        meta_dir:   Root directory of clustering metadata JSONs.
+        reductions: Optional whitelist of ``reduction_percent`` levels.
+
+    Returns:
+        Long DataFrame: one row per fit with ``k``, ``reduction_percent``,
+        ``cut_position_percent``, ``calinski_harabasz`` and ``instability``.
+    """
+    rows = []
+    centroids_by_group: dict[tuple[int, float], list] = {}
+    keys_by_group: dict[tuple[int, float], list[int]] = {}
+    for path in sorted(Path(meta_dir).rglob("*.json")):
+        try:
+            content = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(content, dict) or "centroids" not in content:
+            continue
+        try:                                       # skip stray non-fit JSONs
+            centroids = np.asarray(content["centroids"], dtype=float)
+        except (TypeError, ValueError):
+            continue
+        if centroids.ndim != 2 or centroids.shape[0] < 2:
+            continue
+        k = int(centroids.shape[0])
+        reduction = float(content.get("reduction_percent", 0.0))
+        if reductions is not None and reduction not in set(reductions):
+            continue
+        group = (k, reduction)
+        keys_by_group.setdefault(group, []).append(len(rows))
+        centroids_by_group.setdefault(group, []).append(centroids)
+        rows.append({
+            "k": k,
+            "reduction_percent": reduction,
+            "cut_position_percent": float(content.get("cut_position_percent", 0.0)),
+            "calinski_harabasz": content.get("calinski_harabasz_score", np.nan),
+            "instability": np.nan,
+        })
+    for group, attempts in centroids_by_group.items():
+        instab = compute_instability(attempts)
+        for local_i, row_i in enumerate(keys_by_group[group]):
+            rows[row_i]["instability"] = float(instab[local_i])
+    return pd.DataFrame(rows)
+
+
+# ─────────────────────────────────────────────────────────────────
 #  Silhouette (stratified subsample)
 # ─────────────────────────────────────────────────────────────────
 def compute_silhouette_stratified(
@@ -390,7 +486,125 @@ def selection_summary(
 
 
 # ─────────────────────────────────────────────────────────────────
-#  Selection figure
+#  Selection figure (SOTA 4-panel)
+# ─────────────────────────────────────────────────────────────────
+_PANELS = (
+    # (column, label, log_y, better_direction)
+    ("silhouette", r"mean silhouette  $\bar{s}$", False, "higher"),
+    ("calinski_harabasz", "Calinski–Harabasz  (quality)", True, "higher"),
+    ("inertia", r"inertia  $W(k)$", True, "lower"),
+    ("instability", "instability  (lower = more stable)", False, "lower"),
+)
+
+
+def plot_selection_metrics(
+    summary: pd.DataFrame,
+    *,
+    chosen_k: int,
+    output_path,
+    title: str | None = None,
+    elbow_k: int | None = None,
+    null: pd.DataFrame | None = None,
+):
+    """Render the 4-panel cluster-selection figure (one metric per panel).
+
+    Each panel plots a metric versus ``k``; metrics computed across several
+    ``reduction_percent`` levels are drawn as a sequential-colour sweep with
+    a shaded inter-quartile band, those computed at a single level as one
+    emphasised line.  The chosen ``k`` is marked, the Kneedle elbow starred
+    on the inertia panel, and an optional ``null`` band shaded in grey.
+
+    Args:
+        summary:     Long per-``(k, reduction_percent)`` table with median
+                     columns (``silhouette``/``calinski_harabasz``/``inertia``/
+                     ``instability``) and optional ``*_low`` / ``*_high`` bounds.
+        chosen_k:    The selected number of clusters (vertical marker).
+        output_path: Base path (no extension); saved via ``save_figure``.
+        title:       Optional figure suptitle.
+        elbow_k:     Kneedle elbow on the inertia panel, if any.
+        null:        Optional per-``k`` null-model band (columns ``k`` plus
+                     ``<metric>_low`` / ``<metric>_high``).
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib import colormaps, colors
+
+    from tadpose.viz_constants import WONG, apply_tadpose_style, save_figure
+
+    apply_tadpose_style()
+    reductions = sorted(summary["reduction_percent"].dropna().unique())
+    norm = colors.Normalize(vmin=min(reductions) - 5, vmax=max(reductions) + 12)
+    cmap = colormaps["viridis"]
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.4))
+    for ax, (col, label, log_y, better), letter in zip(
+        axes.ravel(), _PANELS, "abcd"
+    ):
+        if col not in summary:
+            ax.set_visible(False)
+            continue
+        # two passes: shaded bands first, then median lines on top.  The
+        # instability IQR (across cut positions) is very wide and overlaps into
+        # a mush across reductions, so that panel shows clean lines only — the
+        # rising sweep is the signal.
+        if col != "instability":
+            for red in reductions:
+                sub = summary[summary["reduction_percent"] == red].sort_values("k")
+                sub = sub[sub[col].notna()]
+                lo, hi = sub.get(f"{col}_low"), sub.get(f"{col}_high")
+                if not sub.empty and lo is not None and hi is not None and not lo.isna().all():
+                    ax.fill_between(sub["k"], lo, hi, color=cmap(norm(red)),
+                                    alpha=0.15, lw=0, zorder=1)
+        for red in reductions:
+            sub = summary[summary["reduction_percent"] == red].sort_values("k")
+            sub = sub[sub[col].notna()]
+            if sub.empty:
+                continue
+            ax.plot(sub["k"], sub[col], "-", color=cmap(norm(red)), lw=2.0,
+                    label=f"{red:g}", zorder=4, solid_capstyle="round")
+        if null is not None and f"{col}_low" in null:
+            ax.fill_between(null["k"], null[f"{col}_low"], null[f"{col}_high"],
+                            color="0.6", alpha=0.25, lw=0, zorder=1, label="null")
+        ax.axvline(chosen_k, color=WONG["vermilion"], lw=1.3, ls="--", zorder=2)
+        if col == "inertia" and elbow_k is not None:
+            row = summary[(summary["reduction_percent"] == reductions[0])
+                          & (summary["k"] == elbow_k)]
+            if not row.empty:
+                ax.scatter([elbow_k], [row["inertia"].iloc[0]], s=130, marker="*",
+                           color=WONG["orange"], edgecolors="k", linewidths=0.5,
+                           zorder=5, label=f"elbow k={elbow_k}")
+        if log_y:
+            ax.set_yscale("log")
+        ax.set_xlabel("number of clusters  k")
+        ax.set_ylabel(label)
+        ax.text(0.012, 1.02, letter, transform=ax.transAxes,
+                fontweight="bold", fontsize=13, va="bottom")
+        ax.text(0.97, 0.94 if better == "higher" else 0.06,
+                "↑ better" if better == "higher" else "↓ better",
+                transform=ax.transAxes, ha="right",
+                va="top" if better == "higher" else "bottom",
+                fontsize=7, color="0.45")
+        for s in ("top", "right"):
+            ax.spines[s].set_visible(False)
+        ax.grid(True, axis="y", alpha=0.18)
+
+    # chosen-k annotation + a single shared reduction legend
+    axes[0, 0].annotate(f"k = {chosen_k}", xy=(chosen_k, 1.0),
+                        xycoords=("data", "axes fraction"), xytext=(4, -10),
+                        textcoords="offset points", fontsize=8,
+                        color=WONG["vermilion"], fontweight="bold")
+    handles, labels = axes[1, 1].get_legend_handles_labels()
+    fig.legend(handles, labels, title="reduction %", frameon=False,
+               loc="center right", bbox_to_anchor=(1.0, 0.5), fontsize=8)
+    if title:
+        fig.suptitle(title, fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 0.92, 0.97 if title else 1.0))
+    saved = save_figure(fig, output_path, csv_data={"selection": summary})
+    plt.close(fig)
+    return saved
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Selection figure (legacy 3-panel)
 # ─────────────────────────────────────────────────────────────────
 def plot_selection(summary: pd.DataFrame, elbow_k: int | None, output_path):
     """Plot CH, silhouette and inertia/elbow versus k.
