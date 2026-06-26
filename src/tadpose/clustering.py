@@ -28,11 +28,16 @@ import argparse
 import datetime
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import cupy as cp
 import numpy as np
-from cuml.cluster import KMeans
 from sklearn.metrics import calinski_harabasz_score
+
+# cupy + cuml are GPU-only (RAPIDS); import them lazily inside the functions
+# that fit on the GPU so CPU-only consumers — leave_out, the inertia
+# back-fill, path helpers — can import this module on a node without a GPU.
+if TYPE_CHECKING:                                  # pragma: no cover
+    import cupy as cp
 
 
 # ┌──────────────────────────────────────────────────────────────┐
@@ -133,12 +138,14 @@ def make_output_paths(
 
 def calinski_harabasz(
     labels: np.ndarray,
-    data_gpu: cp.ndarray,
+    data_gpu: "cp.ndarray",
 ) -> float:
     """Compute Calinski-Harabasz score, moving data to CPU.
 
     Returns NaN if only one cluster was found.
     """
+    import cupy as cp  # lazy — GPU only
+
     if len(np.unique(labels)) < 2:
         return float("nan")
     return float(calinski_harabasz_score(cp.asnumpy(data_gpu), labels))
@@ -168,6 +175,9 @@ def run_kmeans(
         data_path:    Path to z-scored .npy feature matrix.
         save_dir:     Root directory for structured output.
     """
+    import cupy as cp  # lazy — GPU only
+    from cuml.cluster import KMeans
+
     t0 = datetime.datetime.now()
 
     # « load and excise »
