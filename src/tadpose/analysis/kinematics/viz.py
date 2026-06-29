@@ -71,7 +71,8 @@ def plot_locomotion_summary(
     for ax, vals, state in ((axes[0], circ, "circling"), (axes[1], dart, "darting")):
         x = np.arange(len(labels))
         ax.bar(x, vals, color=kc.STATE_COLOURS[state])
-        ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
         ax.set_ylabel(f"{state} time fraction")
         ax.set_ylim(0, max([v for v in vals if np.isfinite(v)] + [0.01]) * 1.2)
         for sp in ("top", "right"):

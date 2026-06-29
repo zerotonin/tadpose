@@ -56,7 +56,8 @@ def group_means(df: pd.DataFrame, by: str | list[str]) -> pd.DataFrame:
     """Per-group mean and SEM of every numeric metric column."""
     num = df.select_dtypes("number").columns
     g = df.groupby(by)[list(num)]
-    mean = g.mean(); sem = g.sem()
+    mean = g.mean()
+    sem = g.sem()
     out = mean.join(sem, lsuffix="_mean", rsuffix="_sem")
     out["n_tadpoles"] = df.groupby(by).size()
     return out.reset_index()

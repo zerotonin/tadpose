@@ -53,7 +53,8 @@ def compute_ground_speed(
     x: NDArray[np.floating], y: NDArray[np.floating], fps: float,
 ) -> NDArray[np.floating]:
     """Centroid ground speed in mm/s from the trajectory (hypot(dx, dy) * fps)."""
-    x = np.asarray(x, float); y = np.asarray(y, float)
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
     return np.hypot(np.gradient(x), np.gradient(y)) * fps
 
 
@@ -102,7 +103,8 @@ def estimate_well_geometry(
     trajectory is too short.  Prefer exact geometry from ``well_detection`` when
     available.
     """
-    x = np.asarray(x, float); y = np.asarray(y, float)
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
     ok = np.isfinite(x) & np.isfinite(y)
     if ok.sum() < 10:
         return (float(np.nanmedian(x)), float(np.nanmedian(y))), kc.DEFAULT_WELL_RADIUS_MM
@@ -131,7 +133,8 @@ def detect_circling(
     Bouts shorter than ``min_duration_ms`` or without a consistent turn
     direction are discarded.
     """
-    x = np.asarray(x, float); y = np.asarray(y, float)
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
     speed = np.asarray(speed, float)
     if centre is None or radius is None:
         centre, radius = estimate_well_geometry(x, y)
@@ -189,7 +192,8 @@ def detect_darting(
     saccade (``|yaw| > saccade_rad_s``) are merged into one darting episode; an
     episode needs at least ``min_bursts`` bursts.
     """
-    speed = np.asarray(speed, float); yaw = np.asarray(yaw, float)
+    speed = np.asarray(speed, float)
+    yaw = np.asarray(yaw, float)
     n = speed.size
     fast = speed > params.speed_mm_s
     saccade = np.abs(yaw) > params.saccade_rad_s
@@ -261,7 +265,8 @@ def summarise_tadpole(
     stats: dict[str, dict[str, float]] = {}
     hists: dict[str, NDArray[np.floating]] = {}
     for c in kc.CHANNELS:
-        v = ch[c.key]; vf = v[np.isfinite(v)]
+        v = ch[c.key]
+        vf = v[np.isfinite(v)]
         stats[c.key] = {
             "mean": float(np.mean(vf)) if vf.size else float("nan"),
             "median": float(np.median(vf)) if vf.size else float("nan"),

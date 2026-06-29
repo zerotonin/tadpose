@@ -65,10 +65,14 @@ def test_chunking_matches_unchunked():
 
 def test_file_orchestrator_and_append(tmp_path):
     raw, mu, sigma, centroids = _setup()
-    rawp = tmp_path / "raw.npy"; np.save(rawp, raw)
-    msp = tmp_path / "musigma.csv"; save_mu_sigma(mu, sigma, msp)
-    cp = tmp_path / "centroids.npy"; np.save(cp, centroids)
-    existing = tmp_path / "existing.npy"; np.save(existing, np.zeros(50, np.int32))
+    rawp = tmp_path / "raw.npy"
+    np.save(rawp, raw)
+    msp = tmp_path / "musigma.csv"
+    save_mu_sigma(mu, sigma, msp)
+    cp = tmp_path / "centroids.npy"
+    np.save(cp, centroids)
+    existing = tmp_path / "existing.npy"
+    np.save(existing, np.zeros(50, np.int32))
     outp = tmp_path / "labels.npy"
 
     labels = assign_new_data_to_clustering(rawp, msp, cp, outp, append_to=existing)

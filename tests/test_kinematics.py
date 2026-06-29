@@ -59,7 +59,8 @@ def test_darting_fires_on_burst_saccade_burst():
 
 def test_darting_silent_without_saccade():
     n = 1000
-    speed = np.zeros(n); yaw = np.zeros(n)
+    speed = np.zeros(n)
+    yaw = np.zeros(n)
     speed[100:120] = 20.0
     speed[300:320] = 20.0          # two bursts, far apart, no saccade bridge
     out = detect_darting(speed, yaw, FPS)
@@ -74,7 +75,9 @@ def test_velocity_histogram_shapes():
 
 def test_summary_has_all_channels():
     x, y, speed = _circling_trajectory()
-    thrust = speed.copy(); slip = np.zeros_like(speed); yaw = np.full_like(speed, 1.2)
+    thrust = speed.copy()
+    slip = np.zeros_like(speed)
+    yaw = np.full_like(speed, 1.2)
     s = summarise_tadpole(thrust, slip, yaw, x, y, FPS, centre=(0.0, 0.0), radius=7.5)
     for c in kc.CHANNELS:
         assert c.key in s.histograms

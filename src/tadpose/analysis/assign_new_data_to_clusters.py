@@ -119,7 +119,8 @@ def normalise_and_assign(
         (N,) int32 labels; ``-1`` where a row had a non-finite clustering feature.
     """
     raw = np.asarray(raw_features, float)
-    mu = np.asarray(mu, float); sigma = np.asarray(sigma, float)
+    mu = np.asarray(mu, float)
+    sigma = np.asarray(sigma, float)
     if raw.shape[1] != mu.shape[0]:
         raise ValueError(
             f"raw has {raw.shape[1]} columns but mu/sigma have {mu.shape[0]}")
