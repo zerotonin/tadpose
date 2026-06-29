@@ -34,23 +34,25 @@ class Channel:
     symmetric: bool          # True if the quantity is signed about zero
 
 
-#: The five classic channels.  ``speed`` and ``abs_thrust`` are derived from
-#: thrust/slip in :func:`metrics.derive_channels`; the proposed definitions are
-#: documented there and in the dev plan (confirm before publication).
+#: The five classic channels.  ``abs_translational = hypot(thrust, slip)`` is
+#: the body-frame translational velocity magnitude; ``speed`` is the centroid
+#: ground speed from the trajectory (``hypot(dx, dy) * fps``).  Both are derived
+#: in :mod:`metrics` (the former in ``derive_channels``, the latter in
+#: ``compute_ground_speed``).
 CHANNELS: tuple[Channel, ...] = (
     Channel("thrust", "thrust", "mm/s", symmetric=True),
     Channel("slip", "slip", "mm/s", symmetric=True),
     Channel("yaw", "yaw", "rad/s", symmetric=True),
-    Channel("speed", "translational speed", "mm/s", symmetric=False),
-    Channel("abs_thrust", "absolute translational", "mm/s", symmetric=False),
+    Channel("abs_translational", "absolute translational", "mm/s", symmetric=False),
+    Channel("speed", "ground speed", "mm/s", symmetric=False),
 )
 
 CHANNEL_COLOURS: dict[str, str] = {
     "thrust": WONG["blue"],
     "slip": WONG["sky_blue"],
     "yaw": WONG["reddish_purple"],
+    "abs_translational": WONG["orange"],
     "speed": WONG["vermilion"],
-    "abs_thrust": WONG["orange"],
 }
 
 #: Histogram bins per channel.  Symmetric channels use a clipped symmetric
@@ -60,8 +62,8 @@ HIST_RANGE: dict[str, tuple[float, float]] = {
     "thrust": (-40.0, 40.0),
     "slip": (-30.0, 30.0),
     "yaw": (-20.0, 20.0),
+    "abs_translational": (0.0, 50.0),
     "speed": (0.0, 50.0),
-    "abs_thrust": (0.0, 40.0),
 }
 
 
