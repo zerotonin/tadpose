@@ -32,11 +32,11 @@ def derive_channels(
     slip: NDArray[np.floating],
     yaw: NDArray[np.floating],
 ) -> dict[str, NDArray[np.floating]]:
-    """Build the five velocity channels from the three body-centric components.
+    """Build the body-frame velocity channels from the three components.
 
-    Proposed definitions (confirm before publication):
-        speed       = sqrt(thrust^2 + slip^2)   unsigned planar speed
-        abs_thrust  = |thrust|                   forward-speed magnitude
+    ``abs_translational = hypot(thrust, slip)`` is the body-frame translational
+    velocity magnitude.  The fifth channel, ground ``speed``, comes from the
+    centroid trajectory via :func:`compute_ground_speed` (it needs x, y, fps).
     """
     thrust = np.asarray(thrust, float)
     slip = np.asarray(slip, float)
@@ -45,9 +45,16 @@ def derive_channels(
         "thrust": thrust,
         "slip": slip,
         "yaw": yaw,
-        "speed": np.hypot(thrust, slip),
-        "abs_thrust": np.abs(thrust),
+        "abs_translational": np.hypot(thrust, slip),
     }
+
+
+def compute_ground_speed(
+    x: NDArray[np.floating], y: NDArray[np.floating], fps: float,
+) -> NDArray[np.floating]:
+    """Centroid ground speed in mm/s from the trajectory (hypot(dx, dy) * fps)."""
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    return np.hypot(np.gradient(x), np.gradient(y)) * fps
 
 
 def velocity_histogram(
@@ -248,6 +255,7 @@ def summarise_tadpole(
 ) -> KinematicSummary:
     """Compute every classic-kinematics metric for one tadpole."""
     ch = derive_channels(thrust, slip, yaw)
+    ch["speed"] = compute_ground_speed(x, y, fps)
     n = ch["thrust"].size
     valid = np.isfinite(ch["thrust"]) & np.isfinite(ch["yaw"])
     stats: dict[str, dict[str, float]] = {}
@@ -261,8 +269,8 @@ def summarise_tadpole(
         }
         hists[c.key], _ = velocity_histogram(v, c.key)
 
-    circ = detect_circling(x, y, ch["speed"], fps, centre, radius)
-    dart = detect_darting(ch["speed"], yaw, fps)
+    circ = detect_circling(x, y, ch["abs_translational"], fps, centre, radius)
+    dart = detect_darting(ch["abs_translational"], yaw, fps)
     return KinematicSummary(
         n_frames=int(n), fps=float(fps),
         valid_fraction=float(valid.mean()) if n else 0.0,
