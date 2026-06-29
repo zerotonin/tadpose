@@ -390,7 +390,7 @@ def recompute_inertia_for_meta_dir(
 def locate_elbow_kneedle(
     k_values: Sequence[int],
     inertia: Sequence[float],
-    S: float = 1.0,
+    S: float = 2.0,
     curve: str = "convex",
     direction: str = "decreasing",
 ) -> dict[str, float | int | None]:
@@ -490,10 +490,10 @@ def selection_summary(
 # ─────────────────────────────────────────────────────────────────
 _PANELS = (
     # (column, label, log_y, better_direction)
+    ("instability", "instability  (lower = more stable)", False, "lower"),
     ("silhouette", r"mean silhouette  $\bar{s}$", False, "higher"),
     ("calinski_harabasz", "Calinski–Harabasz  (quality)", True, "higher"),
     ("inertia", r"inertia  $W(k)$", True, "lower"),
-    ("instability", "instability  (lower = more stable)", False, "lower"),
 )
 
 
@@ -542,18 +542,22 @@ def plot_selection_metrics(
         if col not in summary:
             ax.set_visible(False)
             continue
-        # two passes: shaded bands first, then median lines on top.  The
-        # instability IQR (across cut positions) is very wide and overlaps into
-        # a mush across reductions, so that panel shows clean lines only — the
-        # rising sweep is the signal.
-        if col != "instability":
-            for red in reductions:
-                sub = summary[summary["reduction_percent"] == red].sort_values("k")
-                sub = sub[sub[col].notna()]
+        # two passes: shaded bands first, then median lines on top.  Bands are
+        # mean ± SEM across cut-position attempts (column "<col>_sem"), or the
+        # explicit "<col>_low"/"<col>_high" bounds if SEM is not provided.
+        for red in reductions:
+            sub = summary[summary["reduction_percent"] == red].sort_values("k")
+            sub = sub[sub[col].notna()]
+            if sub.empty:
+                continue
+            sem = sub.get(f"{col}_sem")
+            if sem is not None and not sem.isna().all():
+                lo, hi = sub[col] - sub[f"{col}_sem"], sub[col] + sub[f"{col}_sem"]
+            else:
                 lo, hi = sub.get(f"{col}_low"), sub.get(f"{col}_high")
-                if not sub.empty and lo is not None and hi is not None and not lo.isna().all():
-                    ax.fill_between(sub["k"], lo, hi, color=cmap(norm(red)),
-                                    alpha=0.15, lw=0, zorder=1)
+            if lo is not None and hi is not None and not lo.isna().all():
+                ax.fill_between(sub["k"], lo, hi, color=cmap(norm(red)),
+                                alpha=0.18, lw=0, zorder=1)
         for red in reductions:
             sub = summary[summary["reduction_percent"] == red].sort_values("k")
             sub = sub[sub[col].notna()]
