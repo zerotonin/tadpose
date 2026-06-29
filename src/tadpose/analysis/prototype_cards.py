@@ -65,16 +65,28 @@ GROUP_NAMES: dict[str, str] = {
 # ┌──────────────────────────────────────────────────────────────┐
 # │ Scales  « global, so cards are comparable PM-to-PM »         │
 # └──────────────────────────────────────────────────────────────┘
-def compute_scales(catalogue: dict) -> dict[str, float]:
-    """Derive the global kinematics / duration scales from a catalogue."""
+def compute_scales(
+    catalogue: dict,
+    *,
+    exclude_categories: set[str] = SWIM_SCALE_EXCLUDE,
+    exclude_from_yaw: bool = False,
+) -> dict[str, float]:
+    """Derive the global kinematics / duration scales from a catalogue.
+
+    Args:
+        catalogue:          Prototype catalogue.
+        exclude_categories: Behavioural-group keys whose prototypes are dropped
+                            from the translational (thrust/slip) max — they then
+                            overshoot the grey context arrows but stay in-panel.
+        exclude_from_yaw:   Also drop those groups from the rotational (yaw) max.
+    """
     keys = [k for k in catalogue if k != "_global"]
-    excl = {
-        int(k) for k in keys
-        if pm_category(int(k)) in SWIM_SCALE_EXCLUDE
-    }
-    thrust_max = max(abs(catalogue[k]["velocity"][0]) for k in keys if int(k) not in excl)
-    slip_max = max(abs(catalogue[k]["velocity"][1]) for k in keys if int(k) not in excl)
-    yaw_max = max(abs(catalogue[k]["velocity"][2]) for k in keys)   # set by saccades
+    excl = {int(k) for k in keys if pm_category(int(k)) in exclude_categories}
+    lin_keys = [k for k in keys if int(k) not in excl]
+    yaw_keys = lin_keys if exclude_from_yaw else keys
+    thrust_max = max(abs(catalogue[k]["velocity"][0]) for k in lin_keys)
+    slip_max = max(abs(catalogue[k]["velocity"][1]) for k in lin_keys)
+    yaw_max = max(abs(catalogue[k]["velocity"][2]) for k in yaw_keys)
     dur_max = catalogue.get("_global", {}).get("dur_max_ms")
     if dur_max is None:
         dur_max = max(catalogue[k].get("dur_mean_ms", 0.0) for k in keys)
@@ -83,6 +95,17 @@ def compute_scales(catalogue: dict) -> dict[str, float]:
         "yaw_max": yaw_max,
         "dur_max": float(dur_max),
     }
+
+
+def _group_prevalences(catalogue: dict) -> dict[str, float]:
+    """Sum every member's prevalence within each behavioural group."""
+    out: dict[str, float] = {}
+    for key in catalogue:
+        if key == "_global":
+            continue
+        out[pm_category(int(key))] = out.get(pm_category(int(key)), 0.0) \
+            + catalogue[key].get("prevalence", 0.0)
+    return out
 
 
 def _landmark_xy(positions: list[float]) -> dict[str, tuple[float, float]]:
@@ -142,7 +165,8 @@ def _arc_head(ax, angle_deg: float, radius: float, travel: float, colour: str,
                  mutation_scale=scale, lw=lw, zorder=zorder))
 
 
-def _panel_kinematics(ax, entry: dict, scales: dict[str, float]) -> None:
+def _panel_kinematics(ax, entry: dict, scales: dict[str, float],
+                      units: tuple[str, str] = ("mm/s", "rad/s")) -> None:
     from matplotlib.patches import Arc, FancyArrowPatch
     thrust, slip, yaw = entry["velocity"]
     vlin, yaw_max = scales["vlin"], scales["yaw_max"]
@@ -178,7 +202,8 @@ def _panel_kinematics(ax, entry: dict, scales: dict[str, float]) -> None:
     ax.set_ylim(-1.6, 1.7)
     ax.set_aspect("equal")
     ax.axis("off")
-    ax.set_title(f"thrust {thrust:.1f} mm/s   slip {slip:.1f} mm/s   yaw {yaw:.1f} rad/s",
+    lin, rot = units
+    ax.set_title(f"thrust {thrust:.1f} {lin}   slip {slip:.1f} {lin}   yaw {yaw:.1f} {rot}",
                  fontsize=FONTSZ)
 
 
@@ -242,6 +267,201 @@ def plot_prototype_card(catalogue: dict, raw_id: int,
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(9, 5.4))
     draw_card(fig, catalogue, raw_id, scales)
+    return fig
+
+
+def plot_group_representatives(
+    catalogue: dict,
+    representatives: dict[str, int],
+    group_durations: dict[str, tuple[float, float]],
+    *,
+    ncols: int = 5,
+) -> "Figure":
+    """Grid of one representative card per behavioural group.
+
+    Both group-level quantities replace the representative's own: the
+    duration bar shows the **group** mean bout duration ± SEM, and the
+    prevalence pie shows the **summed** prevalence of every member of the
+    group (not just the representative).  The card title is tinted in the
+    group colour.
+
+    Args:
+        catalogue:        Distilled prototype catalogue.
+        representatives:  Canonical group key → representative raw id
+                          (typically the most prevalent member).
+        group_durations:  Canonical group key → (mean_ms, sem_ms).
+        ncols:            Cards per row.
+
+    Returns:
+        The assembled matplotlib Figure.
+    """
+    import copy
+
+    import matplotlib.pyplot as plt
+
+    cat = copy.deepcopy(catalogue)
+    group_prevalence = _group_prevalences(catalogue)
+    for gk, rid in representatives.items():
+        mu, se = group_durations[gk]
+        cat[str(rid)]["dur_mean_ms"] = mu
+        cat[str(rid)]["dur_sem_ms"] = se
+        cat[str(rid)]["prevalence"] = group_prevalence[pm_category(rid)]
+    cat["_global"]["dur_max_ms"] = max(group_durations[g][0] for g in representatives)
+    scales = compute_scales(cat)
+
+    reps = list(representatives.values())
+    nrows = (len(reps) + ncols - 1) // ncols
+    fig = plt.figure(figsize=(4.5 * ncols, 3.2 * nrows))
+    grid = fig.add_gridspec(nrows, ncols, hspace=0.18, wspace=0.06,
+                            top=0.92, bottom=0.02)
+    for i, rid in enumerate(reps):
+        r, c = divmod(i, ncols)
+        sub = fig.add_subfigure(grid[r, c])
+        draw_card(sub, cat, rid, scales)
+        sub.suptitle(pm_label(rid), fontsize=14, fontweight="bold", x=0.02,
+                     ha="left", color=vc.BEHAVIOUR_COLOURS[pm_category(rid)])
+    return fig
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Kinematics-only cards  « velocity prototypes, no posture »   │
+# └──────────────────────────────────────────────────────────────┘
+def _kinematic_scales(catalogue: dict) -> dict[str, float]:
+    """Velocity / duration scales for the kinematics-only catalogue."""
+    keys = [k for k in catalogue if k != "_global"]
+    vlin = max(max(abs(catalogue[k]["velocity"][0]), abs(catalogue[k]["velocity"][1]))
+               for k in keys)
+    yaw_max = max(abs(catalogue[k]["velocity"][2]) for k in keys)
+    dur_max = catalogue.get("_global", {}).get("dur_max_ms") \
+        or max(catalogue[k].get("dur_mean_ms", 0.0) for k in keys)
+    return {"vlin": vlin, "yaw_max": yaw_max, "dur_max": float(dur_max)}
+
+
+def plot_kinematics_card(
+    catalogue: dict,
+    *,
+    order: list[int] | None = None,
+    ncols: int = 4,
+) -> "Figure":
+    """Supplement card for the kinematics-only (k=8) prototypes.
+
+    One velocity cross per prototype (thrust / slip in mm/s, yaw in rad/s)
+    with the prevalence pie and the animal-wise bout-duration bar.  Ordered by
+    :data:`viz_constants.KINEMATIC_K8_ORDER` (thrust → saccades → rest) and
+    titled ``KIN.<rank>`` in the movement-kind colour.
+
+    Args:
+        catalogue: Kinematics catalogue ``str(id) -> {velocity, prevalence,
+                   dur_mean_ms, dur_sem_ms}`` plus ``"_global"``.
+        order:     Raw-id display order; defaults to the constant.
+        ncols:     Cards per row.
+    """
+    import matplotlib.pyplot as plt
+
+    order = order or vc.KINEMATIC_K8_ORDER
+    scales = _kinematic_scales(catalogue)
+    nrows = (len(order) + ncols - 1) // ncols
+    fig = plt.figure(figsize=(3.4 * ncols, 3.4 * nrows))
+    grid = fig.add_gridspec(nrows, ncols, hspace=0.42, wspace=0.28,
+                            top=0.85, bottom=0.05)
+    for i, rid in enumerate(order):
+        entry = catalogue[str(rid)]
+        kind = vc.KINEMATIC_K8_KIND.get(rid, "thrust")
+        colour = vc.KINEMATIC_KIND_COLOURS[kind]
+        sub = fig.add_subfigure(grid[divmod(i, ncols)])
+        gs = sub.add_gridspec(2, 2, height_ratios=[1.0, 0.5],
+                              hspace=0.32, wspace=0.25)
+        _panel_kinematics(sub.add_subplot(gs[0, :]), entry, scales, units=("mm/s", "rad/s"))
+        _panel_pie(sub.add_subplot(gs[1, 0]), entry, colour)
+        _panel_duration(sub.add_subplot(gs[1, 1]), entry, colour, scales["dur_max"])
+        sub.suptitle(f"{vc.kinematic_label(rid)}  ·  {kind}", fontsize=12,
+                     fontweight="bold", x=0.02, ha="left", color=colour)
+    fig.suptitle("Kinematics-only prototypes (k = 8): thrust → saccades → rest  "
+                 "·  thrust/slip in mm/s, yaw in rad/s  ·  pie = prevalence  "
+                 "·  bar = bout duration ± SEM",
+                 fontsize=13, fontweight="bold", y=0.97)
+    return fig
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Kinematics ↔ posture coincidence map                         │
+# └──────────────────────────────────────────────────────────────┘
+def _posture_column_order() -> list[int]:
+    """Raw k=36 ids ordered by behavioural group then within-group index."""
+    order: list[int] = []
+    for category in vc.BEHAVIOUR_ORDER:
+        order.extend(vc.THESIS_K36_GROUPS[category])
+    return order
+
+
+def plot_kinematic_posture_map(
+    cross_tab: "np.ndarray",
+    *,
+    kin_order: list[int] | None = None,
+    normalise: str = "column",
+) -> "Figure":
+    """Heat-map of which k=36 posture prototypes coincide with the k=8 ones.
+
+    Args:
+        cross_tab:  ``(8, 36)`` per-frame co-occurrence counts, indexed by raw
+                    k8 id (rows) and raw k36 id (columns).
+        kin_order:  Row display order (raw k8 ids); defaults to the constant
+                    thrust → saccades → rest order.
+        normalise:  ``"column"`` shows P(kinematic | posture PM) — each posture
+                    column sums to 1, i.e. which kinematic each posture PM maps
+                    onto.  ``"row"`` shows P(posture | kinematic).
+
+    The colour axis is asinh-scaled (hot map) so weak couplings stay visible.
+    Columns are grouped by behaviour, with a group-colour bar, group-coloured
+    within-group indices and the group name beneath.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import AsinhNorm
+
+    kin_order = kin_order or vc.KINEMATIC_K8_ORDER
+    cols = _posture_column_order()
+    mat = cross_tab[np.ix_(kin_order, cols)].astype(float)
+    if normalise == "column":
+        mat = mat / mat.sum(axis=0, keepdims=True).clip(min=1e-12)
+    else:
+        mat = mat / mat.sum(axis=1, keepdims=True).clip(min=1e-12)
+
+    fig, ax = plt.subplots(figsize=(15.5, 5.2))
+    lw = max(mat[mat > 0].min(), 1e-4)
+    im = ax.imshow(mat, aspect="auto", cmap="hot",
+                   norm=AsinhNorm(linear_width=lw, vmin=0.0, vmax=1.0))
+    ax.set_yticks(range(len(kin_order)))
+    ax.set_yticklabels([f"{vc.kinematic_label(r)}  ({vc.KINEMATIC_K8_KIND[r]})"
+                        for r in kin_order], fontsize=9)
+    ax.set_xticks([])
+    ax.set_ylabel("kinematics-only prototype")
+    title = ("P(kinematic | posture PM)" if normalise == "column"
+             else "P(posture PM | kinematic)")
+    ax.set_title(f"Kinematics ↔ posture-dynamics prototype coincidence  ·  {title}  "
+                 "·  asinh colour", fontsize=12, fontweight="bold")
+    cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01)
+    cbar.set_label("fraction", fontsize=9)
+
+    # group-colour bar + group-coloured indices + group name beneath the columns
+    n = len(cols)
+    ax.set_xlim(-0.5, n - 0.5)
+    y0 = len(kin_order) - 0.5
+    pos = 0
+    for category in vc.BEHAVIOUR_ORDER:
+        members = vc.THESIS_K36_GROUPS[category]
+        colour = vc.BEHAVIOUR_COLOURS[category]
+        x_start, x_end = pos - 0.5, pos + len(members) - 0.5
+        ax.add_line(plt.Line2D([x_start + 0.05, x_end - 0.05], [y0 + 0.55, y0 + 0.55],
+                    color=colour, lw=3.5, clip_on=False))
+        for j, _ in enumerate(members):
+            ax.text(pos + j, y0 + 0.9, str(j + 1), ha="center", va="top",
+                    fontsize=7.5, color=colour, clip_on=False)
+        ax.text((x_start + x_end) / 2, y0 + 1.5, vc.BEHAVIOUR_ABBREV[category],
+                ha="center", va="top", fontsize=9, fontweight="bold",
+                color=colour, clip_on=False)
+        pos += len(members)
+    ax.set_ylim(y0 + 1.7, -0.5)
+    fig.tight_layout()
     return fig
 
 

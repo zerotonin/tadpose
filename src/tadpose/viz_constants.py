@@ -158,6 +158,41 @@ def _build_pm_labels() -> dict[int, str]:
 PM_LABELS: dict[int, str] = _build_pm_labels()
 
 
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Kinematics-only k=8 prototypes  « thrust → saccades → rest »  │
+# └──────────────────────────────────────────────────────────────┘
+# Raw k=8 ids of the velocity-only (kinematics) clustering
+# (sep24_davies_bouldin_velocity, delSize_0; centroids in physical units —
+# thrust/slip in mm/s, yaw in rad/s; the near-unit column std is the 73%-rest
+# concentration, not standardisation).
+# Supplement-card display order: forward-locomotion (thrust-dominant)
+# prototypes first, ordered by thrust; then the two pure turn saccades
+# (high |yaw|, + then −); rest (near-zero motion) last.  k1 is a yaw+slip
+# sweeping turn, placed at the end of the locomotion block.
+KINEMATIC_K8_ORDER: list[int] = [4, 6, 7, 2, 1, 5, 3, 0]
+
+# Movement kind per raw k=8 id (drives the card title colour).
+KINEMATIC_K8_KIND: dict[int, str] = {
+    4: "thrust", 6: "thrust", 7: "thrust", 2: "thrust",
+    1: "turn", 5: "saccade", 3: "saccade", 0: "rest",
+}
+
+# Card title colour per kinematics movement kind (matches the cross colours:
+# thrust = vermilion, yaw/saccade = reddish purple).
+KINEMATIC_KIND_COLOURS: dict[str, str] = {
+    "thrust":  WONG["vermilion"],
+    "turn":    WONG["orange"],
+    "saccade": WONG["reddish_purple"],
+    "rest":    WONG["black"],
+}
+
+
+def kinematic_label(raw_id: int) -> str:
+    """Return the KIN.<rank> label for a kinematics k=8 raw id."""
+    rank = KINEMATIC_K8_ORDER.index(int(raw_id)) + 1
+    return f"KIN.{rank}"
+
+
 def pm_label(raw_id: int) -> str:
     """Return the GROUP.index label for a raw cluster id (fallback ``C<id>``)."""
     return PM_LABELS.get(int(raw_id), f"C{int(raw_id)}")
