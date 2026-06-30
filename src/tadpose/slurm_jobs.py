@@ -132,7 +132,7 @@ class SlurmJobManager:
         script_parameters['gpus_per_task'] = gpus_per_task
         script_parameters['filename'] = os.path.join(self.file_manager.get_slurm_script_folder(),f'track_well_{well_num}_{individual_video_name}.sh')
         script_parameters['cpus_per_task'] = cpus_per_task
-        script_parameters['python_script'] = os.path.join(self.file_manager.get_script_base_path(),'trajectory_analysis/track_videos.py')
+        script_parameters['python_script'] = '-m tadpose.dlc_runner'
         script_parameters['jobname'] =  f'track_well_{str(well_num).zfill(2)}_video_{individual_video_name}'
         script_parameters['memory'] = memory_GB_int
         script_parameters['script_variables'] = script_variable_list
@@ -147,13 +147,15 @@ class SlurmJobManager:
     def create_trajectory_extraction_slurm_script(self,individual_video_name,tracking_output_fileposition,well_num,video_duration,gpus_per_task =1, memory_GB_int = 64, nodes = 1, cpus_per_task = 1, ntasks = 1):
         
         well_num=str(well_num).zfill(2)
-        script_variables = f'--tracked_coords_path {tracking_output_fileposition}' # note this script doesnt take an output because it alters files in place
+        script_variables = (f'--tracked_coords_path {tracking_output_fileposition} '
+                            f'--well-meta-json {self.file_manager.get_video_meta_data_json_file()} '
+                            f'--video-name {individual_video_name}')  # alters the h5 in place; well meta gives px->mm scale
         script_parameters = dict()
         script_parameters['partition'] =  "aoraki"
         script_parameters['gpus_per_task'] = gpus_per_task
         script_parameters['filename'] = os.path.join(self.file_manager.get_slurm_script_folder(),f'extract_trajectory__well_{well_num}_{individual_video_name}.sh')
         script_parameters['cpus_per_task'] = cpus_per_task
-        script_parameters['python_script'] =  os.path.join(self.file_manager.get_script_base_path(),'trajectory_analysis/extract_trajectories.py')
+        script_parameters['python_script'] =  '-m tadpose.feature_extraction'
         script_parameters['jobname'] =  f'extract_traj_well_{str(well_num).zfill(2)}_video_{individual_video_name}'
         script_parameters['memory'] = memory_GB_int
         script_parameters['script_variables'] = script_variables
@@ -175,7 +177,7 @@ class SlurmJobManager:
         script_parameters['partition'] =  "aoraki"
         script_parameters['filename'] = os.path.join(self.file_manager.get_slurm_script_folder(),f'sql_entry_{individual_video_name}.sh')
         script_parameters['cpus_per_task'] = cpus_per_task
-        script_parameters['python_script'] =  os.path.join(self.file_manager.get_script_base_path(),'manager_classes/ResultManager.py')
+        script_parameters['python_script'] =  '-m tadpose.result_manager'
         script_parameters['jobname'] =  f'sql_entry_{individual_video_name}'
         script_parameters['memory'] = memory_GB_int
         script_parameters['script_variables'] = script_variables
@@ -189,12 +191,12 @@ class SlurmJobManager:
 
     def create_video_splitting_slurm_script(self,individual_raw_video_path,individual_video_name,individual_video_duration,memory_GB_int = 32, nodes = 1, cpus_per_task = 16, ntasks = 1):
         
-        script_variables = f'--video_path {individual_raw_video_path} --output_folder {self.base_output_path}/split_videos'
+        script_variables = f'{individual_raw_video_path} {self.base_output_path}/split_videos'
         script_parameters = dict()
         script_parameters['partition'] =  "aoraki"
         script_parameters['filename'] = os.path.join(self.file_manager.get_slurm_script_folder(),f'split_{individual_video_name}.sh')
         script_parameters['cpus_per_task'] = cpus_per_task # donte filename and output
-        script_parameters['python_script'] =  os.path.join(self.file_manager.get_script_base_path(),'video_preprocessing/VideoSplitter.py')
+        script_parameters['python_script'] =  '-m tadpose.video_segmentation'
         script_parameters['jobname'] =  f'split_{individual_video_name}'
         script_parameters['memory'] = memory_GB_int
         script_parameters['script_variables'] = script_variables
