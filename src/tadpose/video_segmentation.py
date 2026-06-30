@@ -131,13 +131,16 @@ def _save_well_metadata(
 
     data: dict = {}
     if meta_file.exists():
-        data = json.loads(meta_file.read_text())
+        data = json.loads(meta_file.read_text(encoding="utf-8"))
 
+    # Merge, don't replace: a prior step may have written this video's capture
+    # metadata (date/time/camera/fps) that result_manager.insert_video also needs.
     data[video_name] = {
+        **data.get(video_name, {}),
         "median_well_radius_pixels": median_radius_px,
         "real_well_diameter_mm": well_diameter_mm,
     }
-    meta_file.write_text(json.dumps(data, indent=4))
+    meta_file.write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 # ┌──────────────────────────────────────────────────────────────┐
