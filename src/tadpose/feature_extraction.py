@@ -523,6 +523,16 @@ def main() -> None:
 
     out = Path(args.tracked_coords_path) if args.output_path == "inplace" \
         else Path(args.output_path)
+
+    # Resume gate: skip if the output already carries the extracted features.
+    if out.exists():
+        try:
+            if ("velocity", "thrust_mm_s") in pd.read_hdf(out).columns:
+                print(f"RESUME: {out.name} already has features; skipping.")
+                return
+        except (KeyError, ValueError, OSError):
+            pass  # unreadable / not yet augmented -> (re)extract
+
     data = extract_features(args.tracked_coords_path, fps=fps,
                             well_diameter_mm=args.well_diameter_mm, well_diameter_px=well_px)
     data.to_hdf(out, key="df_with_missing", mode="w")

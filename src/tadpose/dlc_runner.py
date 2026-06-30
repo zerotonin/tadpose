@@ -10,6 +10,8 @@
 Thin wrapper that runs DeepLabCut pose estimation over a single per-well clip.
 """
 import argparse
+from pathlib import Path
+
 import deeplabcut
 
 def main():
@@ -21,12 +23,22 @@ def main():
 
     # Parse the arguments
     args = parser.parse_args()
-    
+
 
     video_path = args.video_path
     dlc_config_path=args.dlc_config_path
     output_folder=args.output_folder
-    
+
+    # Resume gate: if this clip is already tracked, do nothing.  Re-firing the
+    # submitter then re-queues only the wells whose .h5 is missing.
+    out_dir = Path(output_folder)
+    stem = Path(video_path).stem
+    done = [p for p in out_dir.glob(f"{stem}*.h5") if p.stat().st_size > 0]
+    if done:
+        print(f"\n===================== RESUME: {stem} already tracked "
+              f"({done[0].name}); skipping. =====================\n")
+        return
+
     # Analyze the video
     print("\n=====================DLC ANALYZING VIDEO ", str(video_path),"\n")
     deeplabcut.analyze_videos(dlc_config_path, [video_path], videotype='mp4', save_as_csv=False, destfolder=output_folder)
