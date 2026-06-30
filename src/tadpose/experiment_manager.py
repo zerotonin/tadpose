@@ -37,9 +37,12 @@ class ExperimentManager:
         """
         os.system('cls' if os.name == 'nt' else 'clear')
 
-    def show_investigators(self):
+    def show_investigators(self, do_print: bool = False):
         """
         Retrieves and formats a PrettyTable of all investigators in the database.
+
+        Args:
+            do_print: print the table here as well as returning it.
         Returns:
             PrettyTable: Table containing the list of investigators.
         """
@@ -47,8 +50,12 @@ class ExperimentManager:
             investigators = db.get_records(Investigator)
             table = PrettyTable()
             table.field_names = ["ID", "First Name", "Last Name"]
+            table.align["First Name"] = "l"
+            table.align["Last Name"] = "l"
             for investigator in investigators:
                 table.add_row([investigator.investigator_id, investigator.first_name, investigator.last_name])
+            if do_print:
+                print(table)
         return table
 
     def enter_new_investigator(self):
@@ -65,10 +72,13 @@ class ExperimentManager:
         else:
             print("Action canceled.")
         
-    def show_experiment_types(self):
+    def show_experiment_types(self, do_print: bool = True):
         """
-        Continuously retrieves and formats a PrettyTable of all experiment types in the database
-        until the user decides not to view any more protocols.
+        Retrieves and formats a PrettyTable of all experiment types in the database.
+
+        Args:
+            do_print: print the table here (the side-by-side view sets this False
+                      so the table is not also printed full-width on its own).
         Returns:
             PrettyTable: Table containing the list of experiment types.
         """
@@ -76,9 +86,16 @@ class ExperimentManager:
             types = db.get_records(ExperimentType)
             table = PrettyTable()
             table.field_names = ["ID", "Short Name", "Long Name"]
+            # Cap the free-text columns so one long description cannot blow the
+            # table width out (PrettyTable wraps the cell across lines).
+            table.max_width["Short Name"] = 22
+            table.max_width["Long Name"] = 48
+            table.align["Short Name"] = "l"
+            table.align["Long Name"] = "l"
             for exp_type in types:
                 table.add_row([exp_type.experiment_type_id, exp_type.short_name, exp_type.long_name])
-            print(table)
+            if do_print:
+                print(table)
         return table
     
     def view_protocol(self):
@@ -87,7 +104,7 @@ class ExperimentManager:
         """
         with self.db_handler as db:
             types = db.get_records(ExperimentType)
-            self.show_experiment_types()
+            self.show_experiment_types(do_print=True)
             experiment_id = input("Enter the ID of the experiment to view its protocol: ").strip()
             # Find the experiment type with the given ID
             experiment_type = next((et for et in types if str(et.experiment_type_id) == experiment_id), None)
@@ -286,7 +303,7 @@ class ExperimentManager:
         Returns:
             int: The ID of the selected investigator, or None if selection is invalid.
         """
-        self.show_investigators()
+        self.show_investigators(do_print=True)
         try:
             investigator_id = int(input("Enter the ID of the investigator you choose: "))
             with self.db_handler as db:
@@ -305,7 +322,7 @@ class ExperimentManager:
         Returns:
             int: The ID of the selected experiment type, or None if selection is invalid.
         """
-        self.show_experiment_types()
+        self.show_experiment_types(do_print=True)
         try:
             experiment_type_id = int(input("Enter the ID of the experiment type you choose: "))
             with self.db_handler as db:
@@ -338,13 +355,15 @@ class ExperimentManager:
         Uses padding to ensure both tables are aligned even if they have different numbers of rows.
         """
         self._clear_screen()
-        investigator_table = self.show_investigators()
-        type_table = self.show_experiment_types()
+        # do_print=False on both: the side-by-side does its own printing, so the
+        # tables must not also be printed full-width on their own first.
+        investigator_table = self.show_investigators(do_print=False)
+        type_table = self.show_experiment_types(do_print=False)
 
         # Split tables into lines
         exp_lines = investigator_table.get_string().split('\n')
         type_lines = type_table.get_string().split('\n')
-        
+
         # Calculate the maximum number of lines either table can have
         max_lines = max(len(exp_lines), len(type_lines))
 
@@ -352,11 +371,15 @@ class ExperimentManager:
         exp_lines.extend([''] * (max_lines - len(exp_lines)))
         type_lines.extend([''] * (max_lines - len(type_lines)))
 
+        # Left column width = widest investigator-table line + a 3-space gutter,
+        # so the right table starts in a fixed column regardless of name lengths.
+        left_width = max((len(line) for line in exp_lines), default=0) + 3
+
         # Format the lines with adequate spacing
         combined_lines = []
         for exp_line, type_line in zip(exp_lines, type_lines):
             # Ensure both lines have the same vertical alignment
-            formatted_line = f"{exp_line.ljust(50)}{type_line}"
+            formatted_line = f"{exp_line.ljust(left_width)}{type_line}"
             combined_lines.append(formatted_line)
 
         # Print the combined lines for side-by-side display
