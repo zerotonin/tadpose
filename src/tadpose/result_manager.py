@@ -15,6 +15,7 @@ import math
 import argparse
 from datetime import datetime
 import pandas as pd
+from sqlalchemy import text
 from tadpose.database import *
 from tadpose.file_manager import FileManager
 from tqdm import tqdm
@@ -282,12 +283,46 @@ class ResultManager:
 
     
     
+    def remove_existing_video(self):
+        """Idempotent re-ingest: drop any prior ingest of THIS video.
+
+        Deletes the video's trajectory / posture / velocity, its time_series,
+        its trials and the video row (the shared ExperimentSeries is left for
+        reuse).  Without this a re-run would insert a duplicate video instead of
+        replacing it -- and a partial/aborted ingest would leave stale rows.
+        """
+        filename = self.video_names[self.video_number]
+        ts_sub = (
+            "select ts.time_series_id from time_series ts "
+            "join trial t on t.trial_id = ts.trial_id "
+            "join video v on v.video_id = t.video_id where v.filename = :fn"
+        )
+        with self.db_handler as db:
+            if not db.session.query(Video).filter(Video.filename == filename).count():
+                return
+            for tbl in ("velocity", "posture", "trajectory"):
+                db.session.execute(
+                    text(f"delete from {tbl} where time_series_id in ({ts_sub})"),
+                    {"fn": filename})
+            db.session.execute(text(
+                "delete from time_series where trial_id in "
+                "(select t.trial_id from trial t join video v on v.video_id = t.video_id "
+                "where v.filename = :fn)"), {"fn": filename})
+            db.session.execute(text(
+                "delete from trial where video_id in "
+                "(select video_id from video where filename = :fn)"), {"fn": filename})
+            db.session.execute(text("delete from video where filename = :fn"), {"fn": filename})
+            db.session.commit()
+        print(f"idempotent: removed prior ingest of {filename} before re-insert")
+
     def enter_results(self):
         """
         Process each row in the metadata DataFrame to create experiments, flies, and trials.
         Assumes that `insert_experiment` has already been called and set `self.experiment_id`.
         """
 
+        # Step 0: idempotency -- replace any prior ingest of this video
+        self.remove_existing_video()
         # Step 1: insert Experinment Series
         self.check_and_if_needed_insert_experiment_series()
         # Step 2: Insert video
