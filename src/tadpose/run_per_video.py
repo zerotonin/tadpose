@@ -155,15 +155,18 @@ def run_one(stem: str, raw_video: Path, base_dir: Path, db: Path,
 
 
 def main(argv: list[str] | None = None) -> None:
-    root = config.data_root()
+    # Defaults resolve from the active profile (output_root / videos_root /
+    # db_path), falling back to data_root-relative paths, so they need no typing.
+    output_default = config.configured_path("output_root", "results", "pipeline", "nov2024_new_genes")
+    videos_default = config.configured_path("videos_root", "videos", "raw", "nov2024_genes")
+    db_default = config.configured_path("db_path", "databases", "xenopus_DEE.sqlite3")
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--output", type=Path,
-                   default=root / "pipeline_output" / "nov2024_new_genes",
+    p.add_argument("--output", type=Path, default=output_default,
                    help="Per-video output base (holds <stem>/meta_data/...).")
-    p.add_argument("--videos", type=Path, default=root / "NEW_NOV_2024_VIDEOS",
+    p.add_argument("--videos", type=Path, default=videos_default,
                    help="Raw-video folder (searched recursively).")
-    p.add_argument("--db", type=Path, default=root / "databases" / "xenopus_DEE.sqlite3",
+    p.add_argument("--db", type=Path, default=db_default,
                    help="SQLite database to ingest into.")
     p.add_argument("--gpu-partition", type=str, default=None,
                    help="GPU partition for the DLC step (default: hpc profile 'partition').")

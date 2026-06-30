@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from tadpose import config
 from tadpose.database import (
     DatabaseHandler,
     Frog,
@@ -595,21 +596,29 @@ def cmd_commit(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    # Defaults resolve from the active profile (videos_root / db_path /
+    # output_root), falling back to data_root-relative paths, so --db / --output
+    # / --videos need not be typed.
+    videos_default = config.configured_path("videos_root", "videos", "raw", "nov2024_genes")
+    db_default = config.configured_path("db_path", "databases", "xenopus_DEE.sqlite3")
+    output_default = config.configured_path("output_root", "results", "pipeline", "nov2024_new_genes")
+
     p = argparse.ArgumentParser(
         prog="python -m tadpose.metadata_ingest",
         description="Spreadsheet -> plate groups + per-video metadata CSVs.")
     sub = p.add_subparsers(dest="command", required=True)
 
     pp = sub.add_parser("plan", help="parse sheet, match videos, write plan CSV")
-    pp.add_argument("--xlsx", type=Path, required=True, help="METADATA TADPOLES.xlsx")
-    pp.add_argument("--videos", type=Path, required=True, help="raw-video folder")
+    pp.add_argument("--xlsx", type=Path, default=videos_default / "METADATA_TADPOLES.xlsx",
+                    help="metadata spreadsheet (default: <videos>/METADATA_TADPOLES.xlsx)")
+    pp.add_argument("--videos", type=Path, default=videos_default, help="raw-video folder")
     pp.add_argument("--out", type=Path, default=None, help="plan CSV path")
     pp.set_defaults(func=cmd_plan)
 
     pc = sub.add_parser("commit", help="seed DB + write per-video metadata CSVs")
     pc.add_argument("--plan", type=Path, required=True, help="reviewed plan CSV")
-    pc.add_argument("--db", type=Path, required=True, help="SQLite database")
-    pc.add_argument("--output", type=Path, required=True, help="per-video output base")
+    pc.add_argument("--db", type=Path, default=db_default, help="SQLite database")
+    pc.add_argument("--output", type=Path, default=output_default, help="per-video output base")
     pc.add_argument("--experiment-type-id", type=int, default=DEFAULT_EXPERIMENT_TYPE_ID)
     pc.add_argument("--default-fert-date", type=str, default=None,
                     help="fallback fertilisation date (YYYY-MM-DD) for unparseable rows")
