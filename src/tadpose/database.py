@@ -203,7 +203,7 @@ class Trial(Base):
     __tablename__ = "trial"
 
     trial_id = Column(Integer, primary_key=True)
-    video_id = Column(Integer, ForeignKey("video.video_id"))
+    video_id = Column(Integer, ForeignKey("video.video_id"), index=True)
     well_number = Column(Integer)
     well_type_id = Column(Integer, ForeignKey("well_type.well_type_id"))
     tadpole_group_id = Column(Integer, ForeignKey("tadpole_group.tadpole_group_id"))
@@ -260,7 +260,7 @@ class TimeSeries(Base):
     __tablename__ = "time_series"
 
     time_series_id = Column(Integer, primary_key=True)
-    trial_id = Column(Integer, ForeignKey("trial.trial_id"))
+    trial_id = Column(Integer, ForeignKey("trial.trial_id"), index=True)
     frame_number = Column(Integer)
 
     trial = relationship("Trial", back_populates="time_series")
@@ -286,7 +286,7 @@ class Trajectory(Base):
     __tablename__ = "trajectory"
 
     trajectory_id = Column(Integer, primary_key=True)
-    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"), index=True)
     body_part_id = Column(Integer, ForeignKey("body_part.body_part_id"))
     x_pos_mm = Column(Float)
     y_pos_mm = Column(Float)
@@ -300,7 +300,7 @@ class Posture(Base):
     __tablename__ = "posture"
 
     posture_id = Column(Integer, primary_key=True)
-    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"), index=True)
     body_part_id = Column(Integer, ForeignKey("body_part.body_part_id"))
     x_pos_mm = Column(Float)
     y_pos_mm = Column(Float)
@@ -314,7 +314,7 @@ class Velocity(Base):
     __tablename__ = "velocity"
 
     velocity_id = Column(Integer, primary_key=True)
-    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"), index=True)
     thrust_mm_s = Column(Float)
     yaw_rad_s = Column(Float)
     slip_mm_s = Column(Float)
@@ -342,7 +342,7 @@ class Clustering(Base):
 
     clustering_id = Column(Integer, primary_key=True)
     clustering_type_id = Column(Integer, ForeignKey("clustering_type.clustering_type_id"))
-    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"), index=True)
     centroid = Column(Integer)
 
     clustering_type = relationship("ClusteringType", back_populates="clusterings")
