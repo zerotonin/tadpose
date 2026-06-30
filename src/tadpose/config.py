@@ -83,6 +83,23 @@ def get_path(key: str) -> Path:
     return Path(get(key)).expanduser()
 
 
+def configured_path(key: str, *fallback_parts: str) -> Path:
+    """Profile path ``key`` if set, else ``data_root()`` joined with fallbacks.
+
+    Lets CLI defaults prefer an explicit profile key (e.g. ``db_path``,
+    ``output_root``, ``videos_root``) so paths need not be typed, while still
+    working on a machine whose profile only sets ``data_root`` (or only sets
+    ``TADPOSE_DATA_ROOT`` with no ``local_paths.json`` at all).
+    """
+    try:
+        value = active_profile().get(key)
+    except PathConfigError:
+        value = None
+    if value:
+        return Path(value).expanduser()
+    return data_root().joinpath(*fallback_parts)
+
+
 def active_profile_name() -> str:
     """Name of the active profile (env → JSON ``active_profile`` → 'local')."""
     return os.environ.get(ENV_PROFILE) or _config().get("active_profile", "local")

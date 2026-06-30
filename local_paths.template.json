@@ -10,9 +10,12 @@
     "hpc": {
       "data_root": "/path/to/cluster/tadpole_project",
       "code_root": "/path/to/your/cluster/checkout/tadpose",
-      "python_interpreter": "/path/to/conda/envs/rapids/bin/python",
-      "dlc_config_path": "/path/to/deeplabcut_models/single_tadpole/config.yaml",
-      "conda_env": "rapids-24.06",
+      "python_interpreter": "/path/to/conda/envs/deeplabcut/bin/python",
+      "dlc_config_path": "/path/to/cluster/tadpole_project/models/dlc_single_tadpole/config.yaml",
+      "db_path": "/path/to/cluster/tadpole_project/databases/your_db.sqlite3",
+      "output_root": "/path/to/cluster/tadpole_project/results/pipeline/<batch>",
+      "videos_root": "/path/to/cluster/tadpole_project/videos/raw/<batch>",
+      "conda_env": "deeplabcut",
       "partition": "<your-slurm-partition>",
       "account": "<your-slurm-account>"
     }
