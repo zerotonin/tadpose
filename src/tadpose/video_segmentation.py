@@ -116,7 +116,7 @@ def _save_well_metadata(
     output_dir: Path,
     video_name: str,
     median_radius_px: int,
-    well_diameter_mm: float = 17.0,
+    well_diameter_mm: float = 15.6,   # SBS-format 24-well plate standard
 ) -> None:
     """Append well-radius info to the metadata JSON.
 
@@ -150,7 +150,7 @@ def split_plate_video(
     *,
     detect_per_frame: bool = False,
     frame_limit: int = 0,
-    well_diameter_mm: float = 17.0,
+    well_diameter_mm: float = 15.6,   # SBS-format 24-well plate standard
 ) -> Path:
     """Split a 24-well plate video into 24 individual well videos.
 

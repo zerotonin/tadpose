@@ -37,6 +37,8 @@ Extract body-centric velocity (thrust, yaw, slip) and frons-aligned posture from
 
 from __future__ import annotations
 
+import argparse
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -60,7 +62,10 @@ POSTURE_PARTS: list[str] = [
     "tail_1", "tail_2", "tail_3", "tail_end",
 ]
 
-WELL_DIAMETER_MM: float = 17.0
+# Standard SBS-format 24-well plate well diameter (Corning/Falcon/Greiner;
+# 1.9 cm^2 growth area -> 2*sqrt(1.9/pi) ~= 15.6 mm).  Combined with the median
+# detected well diameter in pixels this gives the pixels-per-mm scale.
+WELL_DIAMETER_MM: float = 15.6
 DEFAULT_FPS: float = 50.0
 DEFAULT_LIKELIHOOD_THRESHOLD: float = 0.5
 
@@ -468,3 +473,62 @@ def extract_features(
     data = pd.concat([data, dynamics], axis=1)
 
     return data
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ CLI  « the extract step: augment a DLC .h5 in place »        │
+# └──────────────────────────────────────────────────────────────┘
+
+def main() -> None:
+    """Extract velocity + aligned posture and write them into the DLC .h5.
+
+    The pipeline's extract step: read a per-well DLC tracking file, add the
+    body-centric velocity (``('velocity', …)``), frons-aligned posture
+    (``('{part}_aligned', …)``) and posture-dynamics columns, and write the
+    augmented frame back so ``result_manager`` can ingest it.  Mirrors the
+    legacy ``extract_trajectories.py`` (``--output_path inplace`` overwrites).
+    """
+    parser = argparse.ArgumentParser(
+        description="Augment a DLC .h5 in place with velocity + aligned posture.")
+    parser.add_argument("--tracked_coords_path", type=Path, required=True,
+                        help="DLC .h5 tracking file for one well.")
+    parser.add_argument("--output_path", type=str, default="inplace",
+                        help="Destination .h5, or 'inplace' to overwrite the input.")
+    parser.add_argument("--well-meta-json", type=Path, default=None,
+                        help="video_meta_data_table.json from the split step, holding "
+                             "per-video median_well_radius_pixels and fps.")
+    parser.add_argument("--video-name", type=str, default=None,
+                        help="Parent plate-video name (key into --well-meta-json).")
+    parser.add_argument("--fps", type=float, default=None,
+                        help="Frame rate override (else from the json, else default).")
+    parser.add_argument("--well-diameter-mm", type=float, default=WELL_DIAMETER_MM,
+                        help="Physical well diameter; default is the SBS 24-well standard.")
+    parser.add_argument("--well-diameter-px", type=float, default=None,
+                        help="Override the detected well diameter in pixels.")
+    args = parser.parse_args()
+
+    # pixels-per-mm scale: standard well diameter (mm) vs the median DETECTED
+    # well diameter (px) the split step measured for this plate video.
+    fps, well_px = args.fps, args.well_diameter_px
+    if args.well_meta_json is not None and args.video_name is not None:
+        meta = json.loads(Path(args.well_meta_json).read_text()).get(args.video_name, {})
+        if well_px is None and "median_well_radius_pixels" in meta:
+            well_px = 2.0 * float(meta["median_well_radius_pixels"])
+        if fps is None and "fps" in meta:
+            fps = float(meta["fps"])
+    if fps is None:
+        fps = DEFAULT_FPS
+    if well_px is None:
+        print("WARNING: no detected well diameter; velocity will stay in px/frame.")
+
+    out = Path(args.tracked_coords_path) if args.output_path == "inplace" \
+        else Path(args.output_path)
+    data = extract_features(args.tracked_coords_path, fps=fps,
+                            well_diameter_mm=args.well_diameter_mm, well_diameter_px=well_px)
+    data.to_hdf(out, key="df_with_missing", mode="w")
+    print(f"wrote features ({data.shape[1]} cols) to {out} "
+          f"[fps={fps}, well_px={well_px}, well_mm={args.well_diameter_mm}]")
+
+
+if __name__ == "__main__":
+    main()
