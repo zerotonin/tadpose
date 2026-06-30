@@ -184,24 +184,19 @@ class ResultManager:
             row['trial_id'] = new_trial.trial_id
         
     def insert_timeseries(self, index, trial_id):
-        entries = []
-        for frame_i in index:
-            new_entry = TimeSeries(
-                trial_id=self.parse_integer(trial_id),
-                frame_number = self.parse_integer(frame_i)
-            )
-            entries.append(new_entry)
-        
+        entries = [
+            TimeSeries(trial_id=self.parse_integer(trial_id),
+                       frame_number=self.parse_integer(frame_i))
+            for frame_i in index
+        ]
         with self.db_handler as db:
             db.session.add_all(entries)
-            db.session.flush()  # Ensure ID is assigned
-            # Re-fetch the entries to get their assigned IDs
-            for entry in entries:
-                db.session.refresh(entry)
-            inserted_ids = [entry.time_series_id for entry in entries] 
-            print(entries[0],entries[-1],inserted_ids[0],inserted_ids[-1])
+            # flush populates each object's auto-increment PK in place -- the old
+            # per-row session.refresh() loop re-SELECTed every frame (~180k per
+            # well, ~4.3M across a plate) for IDs we already have.
+            db.session.flush()
+            inserted_ids = [entry.time_series_id for entry in entries]
             db.session.commit()
-        print(entries[0],entries[-1],inserted_ids[0],inserted_ids[-1])
         return inserted_ids
     
     def insert_trajectory(self,time_series_ids,trajectory_df):
