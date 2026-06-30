@@ -139,7 +139,7 @@ class ResultManager:
     def check_and_if_needed_insert_experiment_series(self):
         attribute_ids = [self.metadata_df.experiment_type_id[0],self.metadata_df.investigator_id[0],self.experiment_date_time]
         with self.db_handler:
-            exp_series_id = self.db_handler.find_experimentseries_by_attributes(
+            exp_series_id = self.db_handler.find_series_by_attributes(
                 attribute_ids,
                 self.metadata_df.experiment_type_id[0],
                 self.metadata_df.investigator_id[0],
