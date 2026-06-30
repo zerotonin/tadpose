@@ -12,7 +12,20 @@ Thin wrapper that runs DeepLabCut pose estimation over a single per-well clip.
 import argparse
 from pathlib import Path
 
+import torch
+
 import deeplabcut
+
+# DLC 3.0 snapshots pickle numpy scalars, which torch>=2.6's weights_only=True
+# default refuses to unpickle ("Unsupported class numpy.core.multiarray.scalar",
+# UnpicklingError).  The snapshot is the lab's own trusted model, so force
+# weights_only=False for every torch.load DeepLabCut makes internally.
+_torch_load = torch.load
+def _trusted_torch_load(*args, **kwargs):
+    kwargs["weights_only"] = False
+    return _torch_load(*args, **kwargs)
+torch.load = _trusted_torch_load
+
 
 def main():
     # Initialize the argument parser
