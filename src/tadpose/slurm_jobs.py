@@ -142,9 +142,17 @@ class SlurmJobManager:
         # script that just uses paths
         if mode == 'python':
             if isinstance(script_parameters['script_variables'], list):
-                command_str = ''
+                # Background the per-well commands, then wait on each PID and
+                # FAIL the job if any crashed.  A bare `wait` returns 0 even when
+                # children die, which would mask a failed track and let the
+                # chain cascade on empty (no h5 -> no-op ingest).
+                command_str = 'pids=()\n'
                 for script_var in script_parameters['script_variables']:
-                    command_str += f'{self.python_path} {script_parameters["python_script"]} {script_var}&\n'
+                    command_str += f'{self.python_path} {script_parameters["python_script"]} {script_var} &\n'
+                    command_str += 'pids+=($!)\n'
+                command_str += 'rc=0\n'
+                command_str += 'for p in "${pids[@]}"; do wait "$p" || rc=1; done\n'
+                command_str += 'exit $rc\n'
             else:
                 command_str = f'{self.python_path} {script_parameters["python_script"]} {script_parameters["script_variables"]}\n'
         elif mode == 'deeplabcut':
@@ -175,8 +183,10 @@ class SlurmJobManager:
         content += '\n'
         content += 'sleep 5 # wait on auto mount\n'
         content += self._runtime_preamble(is_gpu)
+        # No trailing bare `wait`: it returned 0 even on child failure, masking
+        # crashes.  List mode ends with its own PID-wait + `exit $rc`; scalar
+        # mode ends with the foreground command, whose exit code propagates.
         content += f'{command_str}'
-        content += '\nwait\n'
 
         print("saving script to: ", str(script_parameters["filename"]))
         # Write the SLURM script to a file
@@ -381,19 +391,23 @@ class SlurmJobManager:
         """
         try:
             pending = subprocess.run(
-                ["squeue", "-u", self.user_name, "-h", "-t", "PENDING", "-o", "%i"],
+                ["squeue", "-u", self.user_name, "-h", "-t", "PENDING", "-o", "%i|%j"],
                 capture_output=True, text=True,
-            ).stdout.split()
+            ).stdout.splitlines()
         except FileNotFoundError:
             return  # not on a SLURM login node
-        for jid in pending:
+        # Only the GPU track jobs -- not the CPU extract/ingest jobs, which must
+        # stay on the CPU partition.
+        track_ids = [ln.split("|", 1)[0] for ln in pending
+                     if "track" in ln.split("|", 1)[-1]]
+        for jid in track_ids:
             subprocess.run(
                 ["scontrol", "update", f"jobid={jid}",
                  f"partition={GPU_PARTITIONS_WITH_RTX6000}"],
                 capture_output=True, text=True,
             )
-        if pending:
-            print(f"Re-added RTX6000 to {len(pending)} pending job(s).")
+        if track_ids:
+            print(f"Re-added RTX6000 to {len(track_ids)} pending track job(s).")
 
 
     def manage_workflow_without_splitting(self, num_wells=24,wait_on_job_before_start = None,gpu_chunk_size=3):
