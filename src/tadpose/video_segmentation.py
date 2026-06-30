@@ -173,6 +173,16 @@ def split_plate_video(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Resume gate: skip if this plate is already split into its per-well videos.
+    # Re-running the cascade (e.g. to re-track a few slow/failed wells) then
+    # reuses the existing splits instead of re-cutting the whole plate.
+    existing = [p for p in output_dir.glob(f"{video_path.stem}_well_*.mp4")
+                if p.stat().st_size > 0]
+    if len(existing) >= N_WELLS:
+        print(f"RESUME: {video_path.stem} already split into {len(existing)} "
+              "wells; skipping split.")
+        return output_dir
+
     cap = cv.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise IOError(f"Cannot open video: {video_path}")
