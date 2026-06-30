@@ -44,6 +44,13 @@ def main():
     dlc_config_path=args.dlc_config_path
     output_folder=args.output_folder
 
+    # Refuse to crawl on CPU: DLC's device:auto can silently fall back to CPU
+    # (~50 fps vs ~700 on GPU).  Fail fast so the resume gate re-queues the well
+    # onto a healthy GPU instead of burning hours.
+    if not torch.cuda.is_available():
+        raise RuntimeError("dlc_runner: no CUDA GPU visible -- refusing CPU "
+                           "fallback.  Check the SLURM GPU allocation.")
+
     # Resume gate: if this clip is already tracked, do nothing.  Re-firing the
     # submitter then re-queues only the wells whose .h5 is missing.
     out_dir = Path(output_folder)
@@ -70,9 +77,10 @@ def main():
         print(f"WARNING: could not stage locally ({exc}); reading from {video_path}")
         local_copy = None
 
-    # Analyze the video
+    # Analyze the video.  gputouse=0 pins inference to the allocated GPU (DLC's
+    # device:auto otherwise sometimes lands on CPU).
     print("\n=====================DLC ANALYZING VIDEO ", str(video_path),"\n")
-    deeplabcut.analyze_videos(dlc_config_path, [analyze_path], videotype='mp4', save_as_csv=False, destfolder=output_folder)
+    deeplabcut.analyze_videos(dlc_config_path, [analyze_path], videotype='mp4', save_as_csv=False, destfolder=output_folder, gputouse=0)
     print("\n=====================DLC DONE, EXTRACTING TRAJECTORIES FOR  ", str(video_path),"\n")
 
     if local_copy is not None:
