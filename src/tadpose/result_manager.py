@@ -258,22 +258,23 @@ class ResultManager:
                 db.session.commit()
 
     def insert_velocity(self,time_series_ids,trajectory_df):
+        # Columns written by feature_extraction.extract_features (the extract step).
         subset_columns = [
-        ('yaw', 'yaw_speed_rad_s'),
-        ('com', 'thrust_mms'),
-        ('com', 'slip_mms')]
+        ('velocity', 'yaw_rad_s'),
+        ('velocity', 'thrust_mm_s'),
+        ('velocity', 'slip_mm_s')]
         subset_df = trajectory_df.loc[:, subset_columns].copy()
         subset_df.columns = [col[1] for col in subset_columns]
         subset_df['time_series'] = time_series_ids
-        print(subset_df.head()) 
+        print(subset_df.head())
         print(f"velocity len of subset df: {len(subset_df)}, len of time series: {len(time_series_ids)}")
         entries = []
         for idx, row in subset_df.iterrows():
             new_entry = Velocity(
                 time_series_id = self.parse_integer(row.time_series),
-                thrust_mm_s = self.parse_float_point_num(row.thrust_mms),
-                yaw_rad_s = self.parse_float_point_num(row.yaw_speed_rad_s), # needs to be renamed in the database
-                slip_mm_s = self.parse_float_point_num(row.slip_mms),
+                thrust_mm_s = self.parse_float_point_num(row.thrust_mm_s),
+                yaw_rad_s = self.parse_float_point_num(row.yaw_rad_s),
+                slip_mm_s = self.parse_float_point_num(row.slip_mm_s),
             )
             entries.append(new_entry)
 
