@@ -129,7 +129,7 @@ def build_file_manager(base_dir: Path, raw_video: Path, db: Path, interp: str,
 
 def run_one(stem: str, raw_video: Path, base_dir: Path, db: Path,
             gpu_partition: str, interp: str, dlc: str, code_root: str,
-            submit: bool) -> str | None:
+            submit: bool, wells_per_gpu: int = 1) -> str | None:
     """Set up one video's run and (if ``submit``) fire its SLURM chain."""
     csv_path = Path(base_dir) / "meta_data" / "meta_data_table.csv"
     if not csv_path.exists():
@@ -146,7 +146,7 @@ def run_one(stem: str, raw_video: Path, base_dir: Path, db: Path,
     if not submit:
         return None
     sjm = SlurmJobManager(fm, meta_df, gpu_partition)
-    return sjm.manage_workflow()
+    return sjm.manage_workflow(gpu_chunk_size=wells_per_gpu)
 
 
 # ┌──────────────────────────────────────────────────────────────┐
@@ -172,6 +172,9 @@ def main(argv: list[str] | None = None) -> None:
                    help="GPU partition for the DLC step (default: hpc profile 'partition').")
     p.add_argument("--only", type=str, default=None,
                    help="Only run videos whose stem contains this substring.")
+    p.add_argument("--wells-per-gpu", type=int, default=1,
+                   help="Wells tracked per GPU job (default 1 = one whole GPU per "
+                        "well; >1 packs but contends and is much slower).")
     p.add_argument("--submit", action="store_true",
                    help="Fire the SLURM chains (default: dry run).")
     a = p.parse_args(argv)
@@ -198,7 +201,8 @@ def main(argv: list[str] | None = None) -> None:
 
     submitted: list[tuple[str, str]] = []
     for stem, raw_video, base_dir in runs:
-        job = run_one(stem, raw_video, base_dir, a.db, gpu, interp, dlc, code_root, a.submit)
+        job = run_one(stem, raw_video, base_dir, a.db, gpu, interp, dlc, code_root,
+                      a.submit, wells_per_gpu=a.wells_per_gpu)
         if job:
             submitted.append((stem, job))
 

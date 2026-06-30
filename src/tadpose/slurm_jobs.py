@@ -298,7 +298,7 @@ class SlurmJobManager:
         """Split the data into chunks of chunk_size."""
         return [job_list[i:i + chunk_size] for i in range(0, len(job_list), chunk_size)]
 
-    def manage_workflow(self, num_wells=24,wait_on_before_sql_jobs = None, wait_on_job_before_start = None,gpu_chunk_size=3):
+    def manage_workflow(self, num_wells=24,wait_on_before_sql_jobs = None, wait_on_job_before_start = None,gpu_chunk_size=1):
         """
         Manages the full workflow of splitting, tracking, analyzing, and compiling results.
         """
@@ -410,7 +410,7 @@ class SlurmJobManager:
             print(f"Re-added RTX6000 to {len(track_ids)} pending track job(s).")
 
 
-    def manage_workflow_without_splitting(self, num_wells=24,wait_on_job_before_start = None,gpu_chunk_size=3):
+    def manage_workflow_without_splitting(self, num_wells=24,wait_on_job_before_start = None,gpu_chunk_size=1):
         """
         Manages the full workflow of splitting, tracking, analyzing, and compiling results.
         """
@@ -482,7 +482,7 @@ class SlurmJobManager:
             entry_dependencies.append(sql_entry_script_id)
             
     
-    def manage_workflow_without_splitting_or_tracking(self, num_wells=24,wait_on_job_before_start = None,gpu_chunk_size=3):
+    def manage_workflow_without_splitting_or_tracking(self, num_wells=24,wait_on_job_before_start = None,gpu_chunk_size=1):
         """
         Manages the full workflow of splitting, tracking, analyzing, and compiling results.
         """

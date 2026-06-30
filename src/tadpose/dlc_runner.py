@@ -10,6 +10,8 @@
 Thin wrapper that runs DeepLabCut pose estimation over a single per-well clip.
 """
 import argparse
+import os
+import shutil
 from pathlib import Path
 
 import torch
@@ -52,10 +54,29 @@ def main():
               f"({done[0].name}); skipping. =====================\n")
         return
 
+    # Stage the clip on node-local scratch so DLC's per-frame reads don't hit
+    # the network filesystem during the inference loop (the I/O bottleneck on
+    # long videos).  The .h5 still lands in output_folder (on /projects).  Fall
+    # back to the network path if the copy fails.
+    analyze_path = video_path
+    local_copy = None
+    local_root = os.environ.get("TMPDIR", "/tmp")
+    try:
+        local_copy = Path(local_root) / Path(video_path).name
+        shutil.copy2(video_path, local_copy)
+        analyze_path = str(local_copy)
+        print(f"staged clip on local scratch: {analyze_path}")
+    except OSError as exc:
+        print(f"WARNING: could not stage locally ({exc}); reading from {video_path}")
+        local_copy = None
+
     # Analyze the video
     print("\n=====================DLC ANALYZING VIDEO ", str(video_path),"\n")
-    deeplabcut.analyze_videos(dlc_config_path, [video_path], videotype='mp4', save_as_csv=False, destfolder=output_folder)
+    deeplabcut.analyze_videos(dlc_config_path, [analyze_path], videotype='mp4', save_as_csv=False, destfolder=output_folder)
     print("\n=====================DLC DONE, EXTRACTING TRAJECTORIES FOR  ", str(video_path),"\n")
+
+    if local_copy is not None:
+        local_copy.unlink(missing_ok=True)
 
 if __name__ == '__main__':
     main()
