@@ -9,21 +9,84 @@
 
 Constructs the dependent SLURM job chain (split, track, extract, ingest) for the full per-plate workflow.
 """
-import subprocess
 import os
+import subprocess
+from pathlib import Path
+
 from tadpose.video_info import VideoInfoExtractor
 
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Aoraki GPU pool  « opportunistic multi-partition submission » │
+# └──────────────────────────────────────────────────────────────┘
+# Flood the whole AllowQos=ALL GPU pool and let SLURM bin-pack jobs onto
+# whatever frees first (see the lab "Aoraki Opportunistic GPU Submission"
+# cheat sheet).  RTX6000 is added separately, post-submit, because a fresh
+# submit silently strips it (its AllowQos excludes our default QOS).
+GPU_PARTITIONS = (
+    "aoraki_gpu_H100,aoraki_gpu_A100_80GB,aoraki_gpu_A100_40GB,"
+    "aoraki_gpu_L40,aoraki_gpu_L4_24GB,aoraki_gpu_RTX3090"
+)
+RTX6000_PARTITION = "aoraki_gpu_RTX6000"
+GPU_PARTITIONS_WITH_RTX6000 = f"{GPU_PARTITIONS},{RTX6000_PARTITION}"
+CPU_PARTITIONS = {"aoraki", "aoraki_bigcpu", "aoraki_short"}
+
+
+def _conda_base_and_env(python_path: str) -> tuple[str | None, str | None]:
+    """Derive (conda_base, env_name) from a ``.../envs/<name>/bin/python`` path."""
+    parts = Path(python_path).parts
+    if "envs" in parts:
+        i = parts.index("envs")
+        return str(Path(*parts[:i])), parts[i + 1]
+    return None, None
+
+
 class SlurmJobManager:
-    def __init__(self, file_manager,meta_data_table,gpu_partition = 'aoraki_gpu'):
+    def __init__(self, file_manager, meta_data_table, gpu_partition=GPU_PARTITIONS):
         self.file_manager = file_manager
         self.base_output_path =  self.file_manager.get_base_output_path()
         self.user_name = os.getlogin()
         self.python_path =  self.file_manager.get_python_interpreter()
         self.meta_data_table = meta_data_table
-        self.gpu_partion = gpu_partition
+        # A single GPU partition (e.g. from an old profile) is expanded to the
+        # full opportunistic pool so the DLC step never waits on one queue.
+        self.gpu_partion = gpu_partition if "," in (gpu_partition or "") else GPU_PARTITIONS
+        self.conda_base, self.conda_env = _conda_base_and_env(self.python_path)
         self.runtime_factor = 1 # This factor is to caculate the time each stepn (splitting,tracking,analysing) needs given the video duration.
         # 1 is for a yolov8 mini running on small framed videos of Goettiung v1 2-choice arena, detecting the fly and arena
     
+    def _runtime_preamble(self, is_gpu: bool) -> str:
+        """Conda activation + diagnostics (+ a fail-fast GPU check on GPU jobs).
+
+        The diagnostic block is what you read first when a job misbehaves; the
+        GPU check kills the silent-CPU-fallback failure mode (job runs to
+        walltime on CPU because the framework never saw the GPU).
+        """
+        lines = []
+        if self.conda_base and self.conda_env:
+            lines.append(f'source {self.conda_base}/etc/profile.d/conda.sh')
+            lines.append(f'conda activate {self.conda_env}')
+        lines += [
+            'echo "===================================================="',
+            'echo "  Job:       ${SLURM_JOB_ID}"',
+            'echo "  Partition: ${SLURM_JOB_PARTITION}"',
+            'echo "  Node:      $(hostname)"',
+            'echo "  Python:    $(which python)"',
+            'echo "  Started:   $(date)"',
+        ]
+        if is_gpu:
+            lines += [
+                'echo "  GPU:       $(nvidia-smi --query-gpu=name,memory.total '
+                '--format=csv,noheader 2>/dev/null | head -1)"',
+                'echo "===================================================="',
+                # Fail fast if torch cannot see the GPU (else 12 h on CPU).
+                'python -c "import torch; assert torch.cuda.is_available(), '
+                "'NO GPU VISIBLE -- failing fast'; "
+                'print(\'CUDA OK:\', torch.cuda.get_device_name(0))"',
+            ]
+        else:
+            lines.append('echo "===================================================="')
+        return "\n".join(lines) + "\n"
+
     def format_duration_for_sbatch(self,duration_sec):
         """
         Formats the duration in seconds to the SBATCH time format (D-HH:MM:SS).
@@ -90,13 +153,17 @@ class SlurmJobManager:
             raise ValueError(f'SlurmJobManager:create_slurm_script: Unknown mode {mode}')
 
             
+        # A GPU job is anything not on a CPU-only partition.  Single-partition
+        # CPU jobs are matched against the known CPU partition names.
+        is_gpu = script_parameters["partition"] not in CPU_PARTITIONS
+
         # Construct the SLURM script content
         content =  '#!/bin/bash\n'
         content += f'#SBATCH --job-name={script_parameters["jobname"]}\n'
         content += f'#SBATCH --account={self.user_name}\n'
         content += f'#SBATCH --partition={script_parameters["partition"]}\n'
         content += f'#SBATCH --cpus-per-task={script_parameters["cpus_per_task"]}\n'
-        if script_parameters["partition"] != 'aoraki'and script_parameters["partition"]!='aoraki_bigcpu':
+        if is_gpu:
             content += f'#SBATCH --gpus-per-task={script_parameters["gpus_per_task"]}\n'
 
         content += f'#SBATCH --nodes={script_parameters["nodes"]}\n'
@@ -107,8 +174,7 @@ class SlurmJobManager:
         content += f'#SBATCH --error={self.base_output_path}/slurm_logs/%x.err\n'
         content += '\n'
         content += 'sleep 5 # wait on auto mount\n'
-        # content += f'source {self.file_manager.file_dict['conda_script_position']}\n' # This should come from the filemanager
-        # content += f'conda activate {self.file_manager.file_dict['conda_env_name']}\n'
+        content += self._runtime_preamble(is_gpu)
         content += f'{command_str}'
         content += '\nwait\n'
 
@@ -120,7 +186,7 @@ class SlurmJobManager:
 
 
 
-    def create_tracking_slurm_script(self,gpu_jobs,individual_video_name,video_duration,gpus_per_task =1, memory_GB_int = 64, nodes = 1, cpus_per_task = 1, ntasks = 1):
+    def create_tracking_slurm_script(self,gpu_jobs,individual_video_name,video_duration,gpus_per_task =1, memory_GB_int = 24, nodes = 1, cpus_per_task = 4, ntasks = 1):
         
         
         script_variable_list = list()  
@@ -301,7 +367,33 @@ class SlurmJobManager:
 
 
             entry_dependencies.append(sql_entry_script_id)
+
+        self.readd_rtx6000_to_pending()
         return final_sql_entry_dependency
+
+    def readd_rtx6000_to_pending(self) -> None:
+        """Re-add the gated RTX6000 partition to this user's pending jobs.
+
+        A fresh submit silently strips RTX6000 (its AllowQos excludes our
+        default normal,ondemand QOS).  Queued GPU jobs are auto-elevated to
+        gpu_unlimited, which IS allowed there, so ``scontrol update`` is now
+        accepted -- widening the node pool the 16-job cap can reach.
+        """
+        try:
+            pending = subprocess.run(
+                ["squeue", "-u", self.user_name, "-h", "-t", "PENDING", "-o", "%i"],
+                capture_output=True, text=True,
+            ).stdout.split()
+        except FileNotFoundError:
+            return  # not on a SLURM login node
+        for jid in pending:
+            subprocess.run(
+                ["scontrol", "update", f"jobid={jid}",
+                 f"partition={GPU_PARTITIONS_WITH_RTX6000}"],
+                capture_output=True, text=True,
+            )
+        if pending:
+            print(f"Re-added RTX6000 to {len(pending)} pending job(s).")
 
 
     def manage_workflow_without_splitting(self, num_wells=24,wait_on_job_before_start = None,gpu_chunk_size=3):
