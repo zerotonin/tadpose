@@ -185,99 +185,60 @@ class ResultManager:
             row['trial_id'] = new_trial.trial_id
         
     def insert_timeseries(self, index, trial_id):
-        entries = [
-            TimeSeries(trial_id=self.parse_integer(trial_id),
-                       frame_number=self.parse_integer(frame_i))
-            for frame_i in index
-        ]
+        # Bulk-insert the frames, then read their PKs back in frame order (the
+        # time_series(trial_id) index makes the lookup cheap).  Bulk mappings
+        # skip the ORM unit-of-work overhead of add_all on ~180k objects.
+        tid = self.parse_integer(trial_id)
         with self.db_handler as db:
-            db.session.add_all(entries)
-            # flush populates each object's auto-increment PK in place -- the old
-            # per-row session.refresh() loop re-SELECTed every frame (~180k per
-            # well, ~4.3M across a plate) for IDs we already have.
-            db.session.flush()
-            inserted_ids = [entry.time_series_id for entry in entries]
+            db.session.bulk_insert_mappings(
+                TimeSeries,
+                [{"trial_id": tid, "frame_number": int(f)} for f in index])
             db.session.commit()
-        return inserted_ids
-    
-    def insert_trajectory(self,time_series_ids,trajectory_df):
-        
-        for body_part_id,bodypart_string in self.bodyparts: 
-            # body parts is a fixed table in the db with id and the bodypart name (string) from DLC.
-            # We add to the database handler a function get body parts that returns a list of tuples:
-            # [(0,'left_eye'),(1,'right_eye'),....]
-            subset_df = trajectory_df.loc[:, (bodypart_string, ['x', 'y'])].copy()
-            subset_df.columns = ['x', 'y']  # Rename columns for ease of use
-            subset_df['time_series'] = time_series_ids
-                
-            entries = []
-            for idx, row in subset_df.iterrows():
-                new_entry = Trajectory(
-                    time_series_id = self.parse_integer(row.time_series),
-                    body_part_id = self.parse_integer(body_part_id),
-                    x_pos_mm = self.parse_float_point_num(row.x), 
-                    y_pos_mm = self.parse_float_point_num(row.y),
-                )
-                entries.append(new_entry)
+            rows = db.session.execute(
+                text("select time_series_id from time_series "
+                     "where trial_id = :t order by frame_number"), {"t": tid}).fetchall()
+        return [r[0] for r in rows]
 
+    def _bulk_insert_xy(self, model, time_series_ids, df, suffix=""):
+        """Vectorised bulk insert of per-bodypart (x, y) rows for one well.
 
-            with self.db_handler as db:
-                db.session.bulk_save_objects(entries)
-                db.session.flush()  # Ensure ID is assigned
-                db.session.commit()
-
-    def insert_posture(self,time_series_ids,trajectory_df):
-        
-        for body_part_id,bodypart_string in self.bodyparts: 
-            # body parts is a fixed table in the db with id and the bodypart name (string) from DLC.
-            # We add to the database handler a function get body parts that returns a list of tuples:
-            # [(0,'left_eye'),(1,'right_eye'),....]
-            bodypart_aligned_string=bodypart_string+'_aligned'
-            subset_df = trajectory_df.loc[:, (bodypart_aligned_string, ['x', 'y'])].copy()
-            subset_df.columns = ['x', 'y']  # Rename columns for ease of use
-            subset_df['time_series'] = time_series_ids
-                
-            entries = []
-            for idx, row in subset_df.iterrows():
-                new_entry = Posture(
-                    time_series_id = self.parse_integer(row.time_series),
-                    body_part_id = self.parse_integer(body_part_id),
-                    x_pos_mm = self.parse_float_point_num(row.x), 
-                    y_pos_mm = self.parse_float_point_num(row.y),
-                )
-                entries.append(new_entry)
-
-
-            with self.db_handler as db:
-                db.session.bulk_save_objects(entries)
-                db.session.flush()  # Ensure ID is assigned
-                db.session.commit()
-
-    def insert_velocity(self,time_series_ids,trajectory_df):
-        # Columns written by feature_extraction.extract_features (the extract step).
-        subset_columns = [
-        ('velocity', 'yaw_rad_s'),
-        ('velocity', 'thrust_mm_s'),
-        ('velocity', 'slip_mm_s')]
-        subset_df = trajectory_df.loc[:, subset_columns].copy()
-        subset_df.columns = [col[1] for col in subset_columns]
-        subset_df['time_series'] = time_series_ids
-        print(subset_df.head())
-        print(f"velocity len of subset df: {len(subset_df)}, len of time series: {len(time_series_ids)}")
-        entries = []
-        for idx, row in subset_df.iterrows():
-            new_entry = Velocity(
-                time_series_id = self.parse_integer(row.time_series),
-                thrust_mm_s = self.parse_float_point_num(row.thrust_mm_s),
-                yaw_rad_s = self.parse_float_point_num(row.yaw_rad_s),
-                slip_mm_s = self.parse_float_point_num(row.slip_mm_s),
-            )
-            entries.append(new_entry)
-
-
+        Replaces the old per-row pandas iterrows() + ORM object build (~100x
+        slower) -- builds the mappings by zipping numpy columns and hands them
+        to bulk_insert_mappings in one shot per well.
+        """
+        ts = [int(t) for t in time_series_ids]
+        mappings = []
+        for body_part_id, bodypart_string in self.bodyparts:
+            col = bodypart_string + suffix
+            xs = df[(col, "x")].to_numpy(dtype=float)
+            ys = df[(col, "y")].to_numpy(dtype=float)
+            bid = int(body_part_id)
+            mappings.extend(
+                {"time_series_id": t, "body_part_id": bid,
+                 "x_pos_mm": float(x), "y_pos_mm": float(y)}
+                for t, x, y in zip(ts, xs, ys))
         with self.db_handler as db:
-            db.session.bulk_save_objects(entries)
-            db.session.flush()  # Ensure ID is assigned
+            db.session.bulk_insert_mappings(model, mappings)
+            db.session.commit()
+
+    def insert_trajectory(self, time_series_ids, trajectory_df):
+        self._bulk_insert_xy(Trajectory, time_series_ids, trajectory_df)
+
+    def insert_posture(self, time_series_ids, trajectory_df):
+        self._bulk_insert_xy(Posture, time_series_ids, trajectory_df, suffix="_aligned")
+
+    def insert_velocity(self, time_series_ids, trajectory_df):
+        # Columns written by feature_extraction.extract_features (the extract step).
+        ts = [int(t) for t in time_series_ids]
+        thrust = trajectory_df[("velocity", "thrust_mm_s")].to_numpy(dtype=float)
+        yaw = trajectory_df[("velocity", "yaw_rad_s")].to_numpy(dtype=float)
+        slip = trajectory_df[("velocity", "slip_mm_s")].to_numpy(dtype=float)
+        mappings = [
+            {"time_series_id": t, "thrust_mm_s": float(th),
+             "yaw_rad_s": float(y), "slip_mm_s": float(s)}
+            for t, th, y, s in zip(ts, thrust, yaw, slip)]
+        with self.db_handler as db:
+            db.session.bulk_insert_mappings(Velocity, mappings)
             db.session.commit()
 
 
