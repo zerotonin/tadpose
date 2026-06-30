@@ -500,7 +500,10 @@ def main() -> None:
     parser.add_argument("--video-name", type=str, default=None,
                         help="Parent plate-video name (key into --well-meta-json).")
     parser.add_argument("--fps", type=float, default=None,
-                        help="Frame rate override (else from the json, else default).")
+                        help="(NOT recommended) manually override the frame rate. By "
+                             "default fps is read directly from the video file (via the "
+                             "split step's json); only set this if you know the video "
+                             "header is wrong.")
     parser.add_argument("--well-diameter-mm", type=float, default=WELL_DIAMETER_MM,
                         help="Physical well diameter; default is the SBS 24-well standard.")
     parser.add_argument("--well-diameter-px", type=float, default=None,
@@ -509,15 +512,24 @@ def main() -> None:
 
     # pixels-per-mm scale: standard well diameter (mm) vs the median DETECTED
     # well diameter (px) the split step measured for this plate video.
+    # fps precedence: a manual --fps override (discouraged) wins, else the value
+    # read directly from the video file by the split step (the recommended
+    # default), else a loud DEFAULT_FPS fallback.
     fps, well_px = args.fps, args.well_diameter_px
+    fps_source = "manual --fps override (NOT recommended)" if fps is not None else None
     if args.well_meta_json is not None and args.video_name is not None:
-        meta = json.loads(Path(args.well_meta_json).read_text()).get(args.video_name, {})
+        meta = json.loads(Path(args.well_meta_json).read_text(encoding="utf-8")).get(args.video_name, {})
         if well_px is None and "median_well_radius_pixels" in meta:
             well_px = 2.0 * float(meta["median_well_radius_pixels"])
         if fps is None and "fps" in meta:
             fps = float(meta["fps"])
+            fps_source = "video file (auto-detected)"
     if fps is None:
         fps = DEFAULT_FPS
+        fps_source = f"DEFAULT_FPS={DEFAULT_FPS} fallback"
+        print(f"WARNING: no fps from the video file (json); falling back to {DEFAULT_FPS}. "
+              "Velocities depend on this -- pass --fps only if the header is known-wrong.")
+    print(f"fps = {fps} [{fps_source}]")
     if well_px is None:
         print("WARNING: no detected well diameter; velocity will stay in px/frame.")
 
