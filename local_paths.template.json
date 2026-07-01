@@ -15,6 +15,8 @@
       "db_path": "/path/to/cluster/tadpole_project/databases/your_db.sqlite3",
       "output_root": "/path/to/cluster/tadpole_project/results/pipeline/<batch>",
       "videos_root": "/path/to/cluster/tadpole_project/videos/raw/<batch>",
+      "cluster_musigma": "/path/to/cluster/tadpole_project/cluster_analysis/sep18_canonical/canonical_k36_muSigma.csv",
+      "cluster_centroids": "/path/to/cluster/tadpole_project/cluster_analysis/sep18_canonical/canonical_k36_centroids.npy",
       "conda_env": "deeplabcut",
       "partition": "<your-slurm-partition>",
       "account": "<your-slurm-account>"

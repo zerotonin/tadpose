@@ -163,35 +163,89 @@ def assemble_and_assign(
         append_to:        existing labels .npy to concatenate onto.
     """
     df = base if isinstance(base, pd.DataFrame) else _read_base(Path(base))
-    missing = [c for c in VELOCITY + POSTURE if c not in df.columns]
-    if missing:
-        raise KeyError(f"base table is missing required columns: {missing}")
-
-    df = build_bp_diff_fast(df, trial_column=trial_column)
-    cleaned, _removed = clean_features(df)              # 'cleaned_more_rigorous'
-    X = cleaned[FEATURE_NAMES].to_numpy(float)
-
     mu, sigma = load_mu_sigma(Path(mu_sigma_path))
     centroids = _load_centroids(centroids_path)
-    labels = normalise_and_assign(
-        X, mu, sigma, centroids,
+    labels, cleaned = _assign_base(
+        df, mu, sigma, centroids, trial_column=trial_column,
         feature_columns=feature_columns, chunk_size=chunk_size)
-
-    output_label_path = Path(output_label_path)
-    output_label_path.parent.mkdir(parents=True, exist_ok=True)
+    ids = None
     if id_columns:
         ids = cleaned[list(id_columns)].copy()
         ids["label"] = labels
-        ids.to_csv(output_label_path.with_name(output_label_path.stem + "_ids.csv"),
-                   index=False)
+    return _save_labels(labels, output_label_path, ids_df=ids, append_to=append_to)
+
+
+def _assign_base(df, mu, sigma, centroids, *, trial_column, feature_columns, chunk_size):
+    """bp_diff -> clean -> z-score -> nearest canonical centroid for ONE base table.
+
+    Returns ``(labels, cleaned_df)``.  Factored out so callers can stream the
+    export group-by-group (peak memory = one group, not the whole dataset).
+    """
+    missing = [c for c in VELOCITY + POSTURE if c not in df.columns]
+    if missing:
+        raise KeyError(f"base table is missing required columns: {missing}")
+    df = build_bp_diff_fast(df, trial_column=trial_column)
+    cleaned, _removed = clean_features(df)              # 'cleaned_more_rigorous'
+    X = cleaned[FEATURE_NAMES].to_numpy(float)
+    labels = normalise_and_assign(
+        X, mu, sigma, centroids, feature_columns=feature_columns, chunk_size=chunk_size)
+    return labels, cleaned
+
+
+def _save_labels(labels, output_label_path, *, ids_df=None, append_to=None):
+    """Write the labels .npy (+ optional _ids.csv sidecar); concat onto append_to."""
+    output_label_path = Path(output_label_path)
+    output_label_path.parent.mkdir(parents=True, exist_ok=True)
+    if ids_df is not None:
+        ids_df.to_csv(output_label_path.with_name(output_label_path.stem + "_ids.csv"),
+                      index=False)
     if append_to is not None:
         labels = np.concatenate([np.load(Path(append_to)), labels])
     np.save(output_label_path, labels)
     n_un = int((labels == -1).sum())
-    print(f"Built {X.shape[0]} cleaned rows from {len(df)}; assigned "
-          f"{labels.size - n_un}/{labels.size} ({n_un} unassigned); "
-          f"saved {output_label_path}")
+    print(f"assigned {labels.size - n_un}/{labels.size} "
+          f"({n_un} unassigned); saved {output_label_path}")
     return labels
+
+
+def assemble_from_db(
+    db_file: Path,
+    tadpole_group_ids: Sequence[int],
+    mu_sigma_path: Path,
+    centroids_path: Path,
+    output_label_path: Path,
+    *,
+    id_columns: Sequence[str] | None = None,
+    trial_column: str = "trial_id",
+    feature_columns: Sequence[int] = tuple(CLUSTER_COLUMNS),
+    chunk_size: int = 2_000_000,
+) -> NDArray[np.int32]:
+    """Export + assign the DB groups ONE GROUP AT A TIME, then concatenate.
+
+    The whole-dataset export (per-body-part SQL pivot + bp_diff concat + to_numpy
+    copy) holds several full copies of the frame table and OOMs on multi-group
+    runs.  Streaming per group bounds peak memory to a single group while the
+    accumulated labels/ids (a few int columns) stay small.
+    """
+    mu, sigma = load_mu_sigma(Path(mu_sigma_path))
+    centroids = _load_centroids(centroids_path)
+    all_labels: list[NDArray[np.int32]] = []
+    all_ids: list[pd.DataFrame] = []
+    for g in tadpole_group_ids:
+        df = export_base_features(db_file, [int(g)])
+        labels, cleaned = _assign_base(
+            df, mu, sigma, centroids, trial_column=trial_column,
+            feature_columns=feature_columns, chunk_size=chunk_size)
+        all_labels.append(labels)
+        if id_columns:
+            ids = cleaned[list(id_columns)].copy()
+            ids["label"] = labels
+            all_ids.append(ids)
+        print(f"  group {g}: {labels.size} frames assigned")
+        del df, cleaned
+    labels = np.concatenate(all_labels)
+    ids_df = pd.concat(all_ids, ignore_index=True) if all_ids else None
+    return _save_labels(labels, output_label_path, ids_df=ids_df)
 
 
 def main() -> None:
@@ -200,20 +254,25 @@ def main() -> None:
     Provide EITHER ``--base`` (a CSV/parquet) OR ``--db-file`` + ``--tadpole-groups``
     to export the base table straight from the database (no manual export).
     """
-    root = config.data_root()
+    # Canonical assets resolve from the active profile (hpc: cluster_musigma /
+    # cluster_centroids / db_path), falling back to data_root-relative paths, so
+    # they need no typing and are never hardcoded/guessed at the call site.
+    db_default = config.configured_path("db_path", "databases", "xenopus_DEE.sqlite3")
+    musigma_default = config.configured_path(
+        "cluster_musigma", "cluster_analysis", "sep18_canonical", "canonical_k36_muSigma.csv")
+    centroids_default = config.configured_path(
+        "cluster_centroids", "cluster_analysis", "sep18_canonical", "canonical_k36_centroids.npy")
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--base", type=Path, default=None,
                    help="CSV/parquet base table (velocity + aligned posture).")
-    p.add_argument("--db-file", type=Path, default=None,
-                   help="SQLite DB to export the base table from.")
+    p.add_argument("--db-file", type=Path, default=db_default,
+                   help="SQLite DB to export the base table from (default: hpc profile db_path).")
     p.add_argument("--tadpole-groups", type=str, default=None,
                    help="Comma-separated tadpole_group_ids to export (with --db-file).")
-    p.add_argument("--mu-sigma", type=Path, required=True,
-                   help="Clustering's saved mu/sigma CSV.")
-    p.add_argument("--centroids", type=Path,
-                   default=root / "cluster_analysis" / "sep18_canonical"
-                   / "canonical_k36_centroids.npy",
-                   help="Canonical k=36 centroids .npy/.json.")
+    p.add_argument("--mu-sigma", type=Path, default=musigma_default,
+                   help="Clustering's saved mu/sigma CSV (default: hpc profile cluster_musigma).")
+    p.add_argument("--centroids", type=Path, default=centroids_default,
+                   help="Canonical k=36 centroids .npy/.json (default: hpc profile cluster_centroids).")
     p.add_argument("--output-file", type=Path, required=True,
                    help="Destination .npy for the labels.")
     p.add_argument("--id-columns", type=str, default=None,
@@ -224,23 +283,23 @@ def main() -> None:
                    help="Existing labels .npy to concatenate onto.")
     a = p.parse_args()
 
-    if a.db_file is not None:
+    # --base (an explicit table) wins; otherwise stream the export per group.
+    if a.base is not None:
+        id_cols = a.id_columns.split(",") if a.id_columns else None
+        assemble_and_assign(
+            a.base, a.mu_sigma, a.centroids, a.output_file,
+            id_columns=id_cols, trial_column=a.trial_column, append_to=a.append_to)
+    elif a.db_file is not None:
         if not a.tadpole_groups:
             p.error("--tadpole-groups is required with --db-file")
         groups = [int(g) for g in a.tadpole_groups.split(",")]
-        base: Path | pd.DataFrame = export_base_features(a.db_file, groups)
         id_cols = a.id_columns.split(",") if a.id_columns else ID_DEFAULT
         trial_col = a.trial_column or "trial_id"
-    elif a.base is not None:
-        base = a.base
-        id_cols = a.id_columns.split(",") if a.id_columns else None
-        trial_col = a.trial_column
+        assemble_from_db(
+            a.db_file, groups, a.mu_sigma, a.centroids, a.output_file,
+            id_columns=id_cols, trial_column=trial_col)
     else:
         p.error("provide either --base or (--db-file and --tadpole-groups)")
-
-    assemble_and_assign(
-        base, a.mu_sigma, a.centroids, a.output_file,
-        id_columns=id_cols, trial_column=trial_col, append_to=a.append_to)
 
 
 if __name__ == "__main__":
