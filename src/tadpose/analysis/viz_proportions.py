@@ -61,6 +61,11 @@ def _half_violin(
     """
     if len(data) < 3:
         return
+    # A prototype a group barely uses is ~all-zeros -> zero variance, for which
+    # gaussian_kde's covariance is singular (LinAlgError).  Skip the violin for
+    # such degenerate distributions; the jittered strip + box still show them.
+    if np.ptp(data) < 1e-12 or np.unique(data).size < 2:
+        return
 
     kde = gaussian_kde(data, bw_method=bw_factor)
     y_grid = np.linspace(data.min() - 0.05 * data.ptp(),
