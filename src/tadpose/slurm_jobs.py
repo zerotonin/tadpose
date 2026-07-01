@@ -196,7 +196,7 @@ class SlurmJobManager:
 
 
 
-    def create_tracking_slurm_script(self,gpu_jobs,individual_video_name,video_duration,gpus_per_task =1, memory_GB_int = 24, nodes = 1, cpus_per_task = 4, ntasks = 1):
+    def create_tracking_slurm_script(self,gpu_jobs,individual_video_name,video_duration,gpus_per_task =1, memory_GB_int = 24, nodes = 1, cpus_per_task = 8, ntasks = 1):
         
         
         script_variable_list = list()  
@@ -215,7 +215,14 @@ class SlurmJobManager:
         script_parameters['nodes'] = nodes
         script_parameters['ntasks_per_node'] = ntasks
         script_parameters['module'] = 'detection'
-        script_parameters['runtime_sec'] = video_duration*10
+        # Cap the track walltime.  A healthy GPU well is ~4-10 min; when a job
+        # lands on a node whose CPUs are saturated by a noisy neighbour, DLC's
+        # decode/dataloader starves the GPU and throughput collapses to CPU-speed
+        # (~40 fps -> ~70 min).  Capping at 0.25x the (~2 h) video duration (~30
+        # min) lets a starved job die so the resume gate + login-node pre-flight
+        # re-queue just that well onto a fresh node, instead of crawling for over
+        # an hour.  The 20-min floor covers staging + model-load on short clips.
+        script_parameters['runtime_sec'] = max(1200, video_duration * 0.25)
 
         self.create_slurm_script(script_parameters,mode='python')
         return script_parameters['filename']
