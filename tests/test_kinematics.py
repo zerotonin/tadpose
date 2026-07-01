@@ -9,9 +9,13 @@ from __future__ import annotations
 import numpy as np
 
 from tadpose.analysis.kinematics import (
+    classify_mobility,
     detect_circling,
     detect_darting,
     summarise_tadpole,
+    thigmotaxis,
+    total_path_length,
+    turn_statistics,
     velocity_histogram,
 )
 from tadpose.analysis.kinematics import kinematic_constants as kc
@@ -83,3 +87,44 @@ def test_summary_has_all_channels():
         assert c.key in s.histograms
         assert c.key in s.channel_stats
     assert 0.0 <= s.valid_fraction <= 1.0
+
+
+# ── Whole-animal locomotion metrics ──────────────────────────────
+def test_total_path_length_straight_line():
+    x = np.arange(101, dtype=float)          # 100 steps of 1 mm
+    y = np.zeros(101)
+    assert abs(total_path_length(x, y) - 100.0) < 1e-6
+
+
+def test_mobility_splits_half_and_half():
+    speed = np.zeros(1000)
+    speed[200:700] = 10.0                     # 500 mobile frames, 500 immobile
+    out = classify_mobility(speed, FPS)
+    assert 0.45 < out["mobile_fraction"] < 0.55
+    assert out["immobile_bouts"] == 2         # a leading and a trailing still bout
+
+
+def test_thigmotaxis_wall_vs_centre():
+    xw, yw, _ = _circling_trajectory(radius=7.0)          # hugging the wall
+    wall = thigmotaxis(xw, yw, centre=(0.0, 0.0), radius=7.5)
+    assert wall["periphery_fraction"] > 0.9
+    rng = np.random.default_rng(0)
+    xc, yc = rng.normal(0, 0.2, 2000), rng.normal(0, 0.2, 2000)   # sat in centre
+    cen = thigmotaxis(xc, yc, centre=(0.0, 0.0), radius=7.5)
+    assert cen["centre_fraction"] > 0.9
+
+
+def test_turn_statistics_integrates_yaw():
+    yaw = np.full(1000, 2.0)                   # 2 rad/s for 1000/50 = 20 s
+    out = turn_statistics(yaw, FPS)
+    assert abs(out["total_rotation_rad"] - 40.0) < 1e-6   # 2 * 20 s
+    assert out["n_sharp_turns"] == 0                       # 2 < 6 rad/s threshold
+
+
+def test_summary_has_locomotion_fields():
+    x, y, speed = _circling_trajectory()
+    s = summarise_tadpole(speed, np.zeros_like(speed), np.full_like(speed, 1.2),
+                          x, y, FPS, centre=(0.0, 0.0), radius=7.5)
+    assert np.isfinite(s.path_length_mm) and s.path_length_mm > 0
+    assert 0.0 <= s.periphery_fraction <= 1.0
+    assert s.total_rotation_rad > 0.0
