@@ -19,8 +19,6 @@ class VideoInfoExtractor:
         self.date = None
         self.time = None
         self.fps = None
-        self.real_well_diameter_mm=17
-        self.default_value_for_well_width = 200
         self.camera="DEFAULT"
     def detect_fps(self):
         """
@@ -68,9 +66,14 @@ class VideoInfoExtractor:
         
 
     def get_video_info(self):
-        """
-        Processes the video file to extract date, time, FPS, and duration.
-        Returns a dictionary with the extracted information.
+        """Return capture metadata (date, time, camera, fps, duration).
+
+        Well geometry (``median_well_radius_pixels`` / ``real_well_diameter_mm``)
+        is deliberately NOT returned here: those belong to the split step
+        (video_segmentation._save_well_metadata), which measures the real radius
+        per plate.  Emitting hardcoded 17mm/200px defaults here used to clobber
+        the split's correct values via write_video_json's dict merge whenever the
+        launcher re-ran after a resume-gated split -- silently corrupting pix2mm.
         """
         self.extract_datetime()
         self.detect_fps()
@@ -81,10 +84,4 @@ class VideoInfoExtractor:
             'camera': self.camera,
             'fps': self.fps,
             'duration': self.duration,
-            'real_well_diameter_mm' : self.real_well_diameter_mm,
-            'median_well_radius_pixels':self.default_value_for_well_width
         }
-        
-    # note that the vieo splitter also interacts witht eh video info json file
-    # hello
-    # 
