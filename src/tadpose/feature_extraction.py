@@ -508,6 +508,10 @@ def main() -> None:
                         help="Physical well diameter; default is the SBS 24-well standard.")
     parser.add_argument("--well-diameter-px", type=float, default=None,
                         help="Override the detected well diameter in pixels.")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-extract even if features already exist (bypass the "
+                             "resume gate) -- e.g. to rescale velocities after a "
+                             "corrected well json.")
     args = parser.parse_args()
 
     # pixels-per-mm scale: standard well diameter (mm) vs the median DETECTED
@@ -537,7 +541,7 @@ def main() -> None:
         else Path(args.output_path)
 
     # Resume gate: skip if the output already carries the extracted features.
-    if out.exists():
+    if out.exists() and not args.force:
         try:
             if ("velocity", "thrust_mm_s") in pd.read_hdf(out).columns:
                 print(f"RESUME: {out.name} already has features; skipping.")
