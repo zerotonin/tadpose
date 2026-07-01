@@ -298,76 +298,103 @@ class SlurmJobManager:
         """Split the data into chunks of chunk_size."""
         return [job_list[i:i + chunk_size] for i in range(0, len(job_list), chunk_size)]
 
+    def _split_done(self, video_name, num_wells) -> bool:
+        """Login-node check: is this plate already split into its per-well videos?
+
+        Mirrors the resume gate in video_segmentation (>= N_WELLS non-empty
+        ``<stem>_well_*.mp4``), but runs on the submit host so a completed split
+        is never sent to SLURM at all.
+        """
+        folder = Path(self.base_output_path) / "split_videos"
+        wells = [p for p in folder.glob(f"{video_name}_well_*.mp4")
+                 if p.stat().st_size > 0]
+        return len(wells) >= num_wells
+
+    def _track_done(self, video_name, well_i) -> bool:
+        """Login-node check: does this well already have a non-empty DLC .h5?
+
+        Mirrors the resume gate in dlc_runner (glob ``<well_stem>*.h5`` with
+        size > 0 -- glob, because the real DLC suffix differs from the name
+        get_trajectory_path anticipates).  The expensive GPU allocation is
+        skipped entirely when the h5 is already on disk.
+        """
+        well_stem = Path(self.file_manager.anticipate_splitvid_path(video_name, well_i)).stem
+        folder = Path(self.file_manager.get_trajectory_output_folder())
+        return any(p.stat().st_size > 0 for p in folder.glob(f"{well_stem}*.h5"))
+
     def manage_workflow(self, num_wells=24,wait_on_before_sql_jobs = None, wait_on_job_before_start = None,gpu_chunk_size=1):
+        """Build and submit the split -> track -> extract -> ingest DAG.
+
+        Login-node pre-flight: the split and per-well track stages are the
+        expensive ones (whole-plate CPU cut; one GPU allocation per well), and
+        their completion artifacts are a cheap directory glob.  So they are
+        checked HERE, on the submit host, and finished units are never sent to
+        SLURM -- a resume of a mostly-done video costs zero split/track
+        allocations instead of one no-op allocation per unit.  The cheap CPU
+        extract/ingest jobs still carry their own in-job resume gates (their
+        completion lives inside a 78 MB fixed-format h5 / the DB, not cheaply
+        interrogable from the login node), so they self-skip on the compute node.
         """
-        Manages the full workflow of splitting, tracking, analyzing, and compiling results.
-        """
-        # Step 1: get the list of all<bound method FileManager.get_ videos to extract
         analysis_jobs = []
-        sql_script_filepath_list= []
-        
+        sql_script_filepath_list = []
+        n_skipped_split = 0
+        n_skipped_track = 0
+
         video_series_list = self.file_manager.get_series_video_path_list()
-        
-        
-        
-        #PRINTLINES
-        print("video Series List")
-        print(video_series_list)
-        
-        
-        
         video_duration_list = self.get_video_durations(video_series_list)
         video_name_list = self.file_manager.get_series_video_names()
-        
-        print("Video Series List")
-        print(video_series_list)
-        print("Video Name List")
-        print(video_name_list)
-        print("Video Duration List")
-        print(video_duration_list)
 
-        
-        
-        
-        print("entered_slurm_script_manager_workflow_manager")
         for vidnum in range(len(video_series_list)):
             individual_raw_video_path = video_series_list[vidnum]
-            individual_video_name= video_name_list[vidnum]
-            individual_video_duration=video_duration_list[vidnum]
-            
-            
-            print(f"raw path {individual_raw_video_path} \n video name {individual_video_name}")
-            print(f"filemanager output for trajectory location{self.file_manager.get_trajectory_path(self.file_manager.anticipate_splitvid_path(individual_raw_video_path, 1))}")
-            
-            
-            
-            split_script_filepath = self.create_video_splitting_slurm_script(individual_raw_video_path, individual_video_name, individual_video_duration)
-            split_job_id = self.submit_job(split_script_filepath,wait_on_job_before_start)
-            print("submitted splitter jobs")
+            individual_video_name = video_name_list[vidnum]
+            individual_video_duration = video_duration_list[vidnum]
 
-            # Step 2: Submit tracking and analysis jobs
-            gpu_job_chunks = self.chunk_list(range(num_wells),gpu_chunk_size)
-            
+            # --- split: pre-flight on the login node -----------------------
+            if self._split_done(individual_video_name, num_wells):
+                split_job_id = None
+                n_skipped_split += 1
+                print(f"PRE-FLIGHT skip split: {individual_video_name} already "
+                      f"has >= {num_wells} well videos on disk.")
+            else:
+                split_script_filepath = self.create_video_splitting_slurm_script(
+                    individual_raw_video_path, individual_video_name, individual_video_duration)
+                split_job_id = self.submit_job(split_script_filepath, wait_on_job_before_start)
+
+            # --- track + extract per well ----------------------------------
+            gpu_job_chunks = self.chunk_list(range(num_wells), gpu_chunk_size)
             for gpu_jobs in gpu_job_chunks:
-                track_script_filepath = self.create_tracking_slurm_script(gpu_jobs,individual_video_name, individual_video_duration)
-                track_job_id = self.submit_job(track_script_filepath, dependency_id=split_job_id)
-                # track_job_id=None
+                # Only (re)track the wells whose .h5 is not already on disk.
+                todo = [w for w in gpu_jobs if not self._track_done(individual_video_name, w)]
+                n_skipped_track += len(gpu_jobs) - len(todo)
+                track_job_id = None
+                if todo:
+                    track_script_filepath = self.create_tracking_slurm_script(
+                        todo, individual_video_name, individual_video_duration)
+                    track_job_id = self.submit_job(track_script_filepath, dependency_id=split_job_id)
                 for well_i in gpu_jobs:
-                    ana_script_filepath =self.create_trajectory_extraction_slurm_script(individual_video_name,self.file_manager.get_trajectory_path(self.file_manager.anticipate_splitvid_path(individual_raw_video_path, well_i)),well_i, individual_video_duration)
-                    analysis_job_id = self.submit_job(ana_script_filepath, dependency_id=track_job_id)
+                    ana_script_filepath = self.create_trajectory_extraction_slurm_script(
+                        individual_video_name,
+                        self.file_manager.get_trajectory_path(
+                            self.file_manager.anticipate_splitvid_path(individual_raw_video_path, well_i)),
+                        well_i, individual_video_duration)
+                    # Depend on the track only if THIS well was (re)submitted;
+                    # otherwise its h5 already exists and extract can start now.
+                    dep = track_job_id if well_i in todo else None
+                    analysis_job_id = self.submit_job(ana_script_filepath, dependency_id=dep)
                     analysis_jobs.append(analysis_job_id)
 
             # Step 3: Create and submit the final job that depends on all analysis jobs
-            sql_script_filepath =self.create_sql_entry_slurm_script(individual_video_name, individual_video_duration,vidnum)
+            sql_script_filepath = self.create_sql_entry_slurm_script(
+                individual_video_name, individual_video_duration, vidnum)
             sql_script_filepath_list.append(sql_script_filepath)
-            
+
         entry_dependencies = analysis_jobs.copy() # copy all analysis dependencies
-        
+
         if wait_on_before_sql_jobs is not None:
             entry_dependencies.append(wait_on_before_sql_jobs)
-        
+
         final_sql_entry_dependency = None
-        
+
         for i, entry_script in enumerate(sql_script_filepath_list): # run sql script entries iteratively
             print(f"entry dependencies: {entry_dependencies}")
             all_dependencies = ":".join(str(job_id) for job_id in entry_dependencies)
@@ -378,6 +405,8 @@ class SlurmJobManager:
 
             entry_dependencies.append(sql_entry_script_id)
 
+        print(f"PRE-FLIGHT: skipped {n_skipped_split} split + {n_skipped_track} "
+              f"track job(s) already complete on disk; submitted the rest.")
         self.readd_rtx6000_to_pending()
         return final_sql_entry_dependency
 
