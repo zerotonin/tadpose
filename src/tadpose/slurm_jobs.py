@@ -100,14 +100,20 @@ class SlurmJobManager:
         else:
             return f"{hours:02}:{minutes:02}:{seconds:02}"
 
-    def submit_job(self, script_path, dependency_id=None):
-        """
-        Submits a job to the SLURM scheduler with an optional dependency.
+    def submit_job(self, script_path, dependency_id=None, dependency_type='afterok'):
+        """Submit a job to SLURM with an optional dependency.
+
+        dependency_type:
+            'afterok'  -- start only if the dependency SUCCEEDED (data deps:
+                          extract needs the track's h5, etc.).
+            'afterany' -- start once the dependency FINISHES, success or fail
+                          (serialisation only, e.g. the per-video ingest chain:
+                          one broken ingest must not block the rest).
         """
         print(dependency_id)
         cmd = ['sbatch']
         if dependency_id:
-            cmd.append(f'--dependency=afterok:{dependency_id}')
+            cmd.append(f'--dependency={dependency_type}:{dependency_id}')
         cmd.append(script_path)
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
@@ -406,8 +412,12 @@ class SlurmJobManager:
             print(f"entry dependencies: {entry_dependencies}")
             all_dependencies = ":".join(str(job_id) for job_id in entry_dependencies)
 
-            sql_entry_script_id = self.submit_job(entry_script, dependency_id=all_dependencies)
-            final_sql_entry_dependency =sql_entry_script_id
+            # afterany, not afterok: the ingest chain is serialised only to avoid
+            # SQLite write-lock contention -- a broken ingest (or a failed extract
+            # upstream) must not block the remaining videos' ingests.
+            sql_entry_script_id = self.submit_job(entry_script, dependency_id=all_dependencies,
+                                                  dependency_type='afterany')
+            final_sql_entry_dependency = sql_entry_script_id
 
 
             entry_dependencies.append(sql_entry_script_id)

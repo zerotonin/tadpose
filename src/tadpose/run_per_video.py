@@ -129,8 +129,14 @@ def build_file_manager(base_dir: Path, raw_video: Path, db: Path, interp: str,
 
 def run_one(stem: str, raw_video: Path, base_dir: Path, db: Path,
             gpu_partition: str, interp: str, dlc: str, code_root: str,
-            submit: bool, wells_per_gpu: int = 1) -> str | None:
-    """Set up one video's run and (if ``submit``) fire its SLURM chain."""
+            submit: bool, wells_per_gpu: int = 1,
+            wait_on_before_sql: str | None = None) -> str | None:
+    """Set up one video's run and (if ``submit``) fire its SLURM chain.
+
+    ``wait_on_before_sql`` is the previous video's ingest job id; this video's
+    ingest waits (afterany) on it so the per-video ingests serialise on the
+    single-writer SQLite DB without one failure blocking the rest.
+    """
     csv_path = Path(base_dir) / "meta_data" / "meta_data_table.csv"
     if not csv_path.exists():
         print(f"  {stem}: no meta_data_table.csv; run metadata_ingest commit first")
@@ -146,7 +152,8 @@ def run_one(stem: str, raw_video: Path, base_dir: Path, db: Path,
     if not submit:
         return None
     sjm = SlurmJobManager(fm, meta_df, gpu_partition)
-    return sjm.manage_workflow(gpu_chunk_size=wells_per_gpu)
+    return sjm.manage_workflow(gpu_chunk_size=wells_per_gpu,
+                               wait_on_before_sql_jobs=wait_on_before_sql)
 
 
 # ┌──────────────────────────────────────────────────────────────┐
@@ -200,11 +207,13 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  discovered {len(runs)} per-video run(s):")
 
     submitted: list[tuple[str, str]] = []
+    prev_sql: str | None = None  # chain each video's ingest afterany the previous
     for stem, raw_video, base_dir in runs:
         job = run_one(stem, raw_video, base_dir, a.db, gpu, interp, dlc, code_root,
-                      a.submit, wells_per_gpu=a.wells_per_gpu)
+                      a.submit, wells_per_gpu=a.wells_per_gpu, wait_on_before_sql=prev_sql)
         if job:
             submitted.append((stem, job))
+            prev_sql = job
 
     if not a.submit:
         print("\nDRY RUN: setup verified, nothing submitted. Re-run with --submit.")
