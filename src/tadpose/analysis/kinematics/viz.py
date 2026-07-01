@@ -17,9 +17,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ...viz_constants import save_figure
+from typing import TYPE_CHECKING
+
+from ...viz_constants import WONG, save_figure
 from . import kinematic_constants as kc
 from .metrics import KinematicSummary
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def plot_velocity_histograms(
@@ -82,3 +87,72 @@ def plot_locomotion_summary(
     fig.tight_layout(rect=(0, 0, 1, 0.95 if title else 1))
     csv = {"label": labels, "circling_fraction": circ, "darting_fraction": dart}
     return save_figure(fig, Path(path), csv_data=csv)
+
+
+def plot_path_traces(
+    traces: dict[str, dict[str, object]], path: Path,
+    ncols: int = 6, title: str | None = None,
+) -> list[Path]:
+    """Grid of centroid path traces in the well circle, one per tadpole.
+
+    Args:
+        traces: ``{label: {"x", "y", "centre", "radius"}}`` in mm.
+        path:   Output base path (no extension).
+    """
+    n = len(traces)
+    nrows = int(np.ceil(n / ncols)) or 1
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.0 * ncols, 2.0 * nrows), squeeze=False)
+    for ax in axes.flat:
+        ax.axis("off")
+    ring = np.linspace(0, 2 * np.pi, 120)
+    for k, (label, t) in enumerate(traces.items()):
+        ax = axes[k // ncols, k % ncols]
+        ax.axis("on")
+        (cx, cy), r = t["centre"], t["radius"]
+        ax.plot(cx + r * np.cos(ring), cy + r * np.sin(ring),
+                color=kc.STATE_COLOURS["other"], lw=0.7)
+        ax.plot(t["x"], t["y"], color=WONG["blue"], lw=0.35, alpha=0.7)
+        ax.set_aspect("equal")
+        ax.set_title(str(label), fontsize=7)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+    if title:
+        fig.suptitle(title, fontsize=12, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.96 if title else 1))
+    return save_figure(fig, Path(path))
+
+
+def plot_group_scalars(
+    df: pd.DataFrame, metrics: list[str], path: Path,
+    group_col: str = "group",
+    group_order: list[str] | None = None,
+    colours: dict[str, str] | None = None,
+    title: str | None = None,
+) -> list[Path]:
+    """Strip + box of locomotion scalar metrics per group (one panel per metric)."""
+    groups = group_order or sorted(df[group_col].dropna().unique())
+    rng = np.random.default_rng(0)
+    fig, axes = plt.subplots(1, len(metrics), figsize=(2.7 * len(metrics), 3.6), squeeze=False)
+    for ax, metric in zip(axes[0], metrics):
+        for i, g in enumerate(groups):
+            vals = df.loc[df[group_col] == g, metric].dropna().to_numpy(float)
+            if not vals.size:
+                continue
+            col = (colours or {}).get(g, WONG["black"])
+            ax.scatter(i + rng.uniform(-0.15, 0.15, vals.size), vals,
+                       s=8, color=col, alpha=0.6, linewidths=0)
+            ax.boxplot(vals, positions=[i], widths=0.5, showfliers=False,
+                       medianprops={"color": col}, boxprops={"color": col},
+                       whiskerprops={"color": col}, capprops={"color": col})
+        ax.set_xticks(range(len(groups)))
+        ax.set_xticklabels(groups, rotation=45, ha="right", fontsize=8)
+        ax.set_title(metric, fontsize=9)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+    if title:
+        fig.suptitle(title, fontsize=12, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.95 if title else 1))
+    return save_figure(fig, Path(path),
+                       csv_data={"table": df[[group_col, *metrics]]})

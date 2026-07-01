@@ -23,16 +23,26 @@ from __future__ import annotations
 
 from . import kinematic_constants
 from .aggregate import average_histograms, group_means, summaries_to_frame
+from .loader import load_tadpole, trials_for_groups
 from .metrics import (
     KinematicSummary,
+    classify_mobility,
     derive_channels,
     detect_circling,
     detect_darting,
     estimate_well_geometry,
     summarise_tadpole,
+    thigmotaxis,
+    total_path_length,
+    turn_statistics,
     velocity_histogram,
 )
-from .viz import plot_locomotion_summary, plot_velocity_histograms
+from .viz import (
+    plot_group_scalars,
+    plot_locomotion_summary,
+    plot_path_traces,
+    plot_velocity_histograms,
+)
 
 __all__ = [
     "kinematic_constants",
@@ -43,9 +53,17 @@ __all__ = [
     "estimate_well_geometry",
     "summarise_tadpole",
     "velocity_histogram",
+    "total_path_length",
+    "classify_mobility",
+    "thigmotaxis",
+    "turn_statistics",
     "summaries_to_frame",
     "group_means",
     "average_histograms",
+    "load_tadpole",
+    "trials_for_groups",
     "plot_velocity_histograms",
     "plot_locomotion_summary",
+    "plot_path_traces",
+    "plot_group_scalars",
 ]
