@@ -77,10 +77,12 @@ def main():
         print(f"WARNING: could not stage locally ({exc}); reading from {video_path}")
         local_copy = None
 
-    # Analyze the video.  gputouse=0 pins inference to the allocated GPU (DLC's
-    # device:auto otherwise sometimes lands on CPU).
+    # Analyze the video.  Do NOT pass gputouse: under SLURM the allocated GPU is
+    # already isolated via CUDA_VISIBLE_DEVICES, and gputouse=0 rewrites it on top
+    # of that, landing DLC on a device it cannot use -> silent CPU fallback (~40
+    # fps).  The model's pytorch_config.yaml device:cuda drives GPU selection.
     print("\n=====================DLC ANALYZING VIDEO ", str(video_path),"\n")
-    deeplabcut.analyze_videos(dlc_config_path, [analyze_path], videotype='mp4', save_as_csv=False, destfolder=output_folder, gputouse=0)
+    deeplabcut.analyze_videos(dlc_config_path, [analyze_path], videotype='mp4', save_as_csv=False, destfolder=output_folder)
     print("\n=====================DLC DONE, EXTRACTING TRAJECTORIES FOR  ", str(video_path),"\n")
 
     if local_copy is not None:
