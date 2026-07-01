@@ -178,7 +178,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--gpu-partition", type=str, default=None,
                    help="GPU partition for the DLC step (default: hpc profile 'partition').")
     p.add_argument("--only", type=str, default=None,
-                   help="Only run videos whose stem contains this substring.")
+                   help="Only run videos whose stem contains any of these "
+                        "comma-separated substrings (OR).  E.g. 'Aap,aef2,Bap,bef' "
+                        "selects the new-gene plates but not the NeuroD2 duplicates.")
     p.add_argument("--wells-per-gpu", type=int, default=1,
                    help="Wells tracked per GPU job (default 1 = one whole GPU per "
                         "well; >1 packs but contends and is much slower).")
@@ -193,7 +195,8 @@ def main(argv: list[str] | None = None) -> None:
 
     runs = discover_runs(a.output, a.videos)
     if a.only:
-        runs = [r for r in runs if a.only in r[0]]
+        keys = [s for s in a.only.split(",") if s]
+        runs = [r for r in runs if any(k in r[0] for k in keys)]
 
     print("── per-video pipeline ─────────────────────────────────")
     print(f"  output      : {a.output}")
