@@ -42,7 +42,18 @@ def summaries_to_frame(
                                   "circling_bouts": s.circling_bouts,
                                   "darting_time_s": s.darting_time_s,
                                   "darting_fraction": s.darting_fraction,
-                                  "darting_episodes": s.darting_episodes}
+                                  "darting_episodes": s.darting_episodes,
+                                  "path_length_mm": s.path_length_mm,
+                                  "mobile_fraction": s.mobile_fraction,
+                                  "immobile_time_s": s.immobile_time_s,
+                                  "immobile_bouts": s.immobile_bouts,
+                                  "periphery_fraction": s.periphery_fraction,
+                                  "centre_fraction": s.centre_fraction,
+                                  "centre_entries": s.centre_entries,
+                                  "mean_radial_mm": s.mean_radial_mm,
+                                  "total_rotation_rad": s.total_rotation_rad,
+                                  "n_sharp_turns": s.n_sharp_turns,
+                                  "mean_abs_yaw_rad_s": s.mean_abs_yaw_rad_s}
         for c in kc.CHANNELS:
             for stat, val in s.channel_stats[c.key].items():
                 row[f"{c.key}_{stat}"] = val

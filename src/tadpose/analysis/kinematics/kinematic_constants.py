@@ -98,6 +98,42 @@ class CirclingParams:
 
 CIRCLING = CirclingParams()
 
+
+# ─────────────────────────────────────────────────────────────
+#  Whole-animal locomotion metrics
+#  « distance, mobility, thigmotaxis, turning »
+# ─────────────────────────────────────────────────────────────
+@dataclass(frozen=True)
+class MobilityParams:
+    """Mobile-vs-immobile classification from centroid ground speed."""
+    move_mm_s: float = 2.0             # ground speed above this = mobile
+    min_immobile_ms: float = 500.0     # an immobility bout must last this long
+
+
+MOBILITY = MobilityParams()
+
+
+@dataclass(frozen=True)
+class ThigmotaxisParams:
+    """Centre-vs-periphery zone split for thigmotaxis (wall preference).
+
+    ``centre_fraction`` is a radius fraction; equal centre/periphery *area* is
+    ``1/sqrt(2) ~= 0.707`` -- the default 0.5 gives a smaller, stricter centre.
+    """
+    centre_fraction: float = 0.5       # r < fraction*radius = centre zone
+
+
+THIGMO = ThigmotaxisParams()
+
+
+@dataclass(frozen=True)
+class TurnParams:
+    """Turn / rotation statistics from body-frame yaw."""
+    sharp_turn_rad_s: float = 6.0      # |yaw| above this marks a sharp turn
+
+
+TURN = TurnParams()
+
 #: Default 24-well plate well radius in mm, used when well geometry is not
 #: supplied explicitly.  Override per dataset (see metrics.estimate_well_geometry).
 DEFAULT_WELL_RADIUS_MM: float = 7.8

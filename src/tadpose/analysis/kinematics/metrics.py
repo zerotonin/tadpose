@@ -227,6 +227,94 @@ def detect_darting(
 
 
 # ─────────────────────────────────────────────────────────────
+#  Whole-animal locomotion metrics
+# ─────────────────────────────────────────────────────────────
+def total_path_length(x: NDArray[np.floating], y: NDArray[np.floating]) -> float:
+    """Total centroid path length in mm (sum of frame-to-frame displacement)."""
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    step = np.hypot(np.diff(x), np.diff(y))
+    return float(np.nansum(step[np.isfinite(step)]))
+
+
+def classify_mobility(
+    speed: NDArray[np.floating], fps: float,
+    params: kc.MobilityParams = kc.MOBILITY,
+) -> dict[str, object]:
+    """Split time into mobile vs immobile from centroid ground speed.
+
+    Frames faster than ``move_mm_s`` are mobile; immobility runs shorter than
+    ``min_immobile_ms`` are folded back into mobile (brief mid-swim pauses).
+    """
+    speed = np.asarray(speed, float)
+    valid = np.isfinite(speed)
+    mobile = (speed > params.move_mm_s) & valid
+    min_still = _min_frames(params.min_immobile_ms, fps)
+    keep_still = np.zeros_like(mobile)
+    bouts = 0
+    for s, e in _runs(valid & ~mobile):
+        if e - s >= min_still:
+            keep_still[s:e] = True
+            bouts += 1
+    n_valid = int(valid.sum())
+    still_n = int(keep_still.sum())
+    move_n = n_valid - still_n
+    return {
+        "mobile_time_s": move_n / fps,
+        "immobile_time_s": still_n / fps,
+        "mobile_fraction": move_n / n_valid if n_valid else float("nan"),
+        "immobile_bouts": bouts,
+    }
+
+
+def thigmotaxis(
+    x: NDArray[np.floating], y: NDArray[np.floating],
+    centre: tuple[float, float] | None = None,
+    radius: float | None = None,
+    params: kc.ThigmotaxisParams = kc.THIGMO,
+) -> dict[str, object]:
+    """Centre-vs-periphery occupancy and centre-zone entries (thigmotaxis).
+
+    The centre zone is ``r < centre_fraction * radius``; the rest is the
+    wall-side periphery.  A high ``periphery_fraction`` is thigmotaxis (wall
+    hugging).  ``centre_entries`` counts transitions from periphery into centre.
+    """
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    if centre is None or radius is None:
+        centre, radius = estimate_well_geometry(x, y)
+    cx, cy = centre
+    r = np.hypot(x - cx, y - cy)
+    valid = np.isfinite(r)
+    centre_mask = valid & (r < params.centre_fraction * radius)
+    n_valid = int(valid.sum())
+    return {
+        "centre_fraction": int(centre_mask.sum()) / n_valid if n_valid else float("nan"),
+        "periphery_fraction": int((valid & ~centre_mask).sum()) / n_valid if n_valid else float("nan"),
+        "centre_entries": sum(1 for _ in _runs(centre_mask)),
+        "mean_radial_mm": float(np.nanmean(r[valid])) if n_valid else float("nan"),
+    }
+
+
+def turn_statistics(
+    yaw: NDArray[np.floating], fps: float,
+    params: kc.TurnParams = kc.TURN,
+) -> dict[str, object]:
+    """Rotation totals from body-frame yaw (rad/s).
+
+    ``total_rotation_rad`` integrates |yaw| over time; ``n_sharp_turns`` counts
+    runs where |yaw| exceeds ``sharp_turn_rad_s``.
+    """
+    yaw = np.asarray(yaw, float)
+    valid = np.isfinite(yaw)
+    return {
+        "total_rotation_rad": float(np.nansum(np.abs(yaw[valid])) / fps),
+        "n_sharp_turns": sum(1 for _ in _runs(valid & (np.abs(yaw) > params.sharp_turn_rad_s))),
+        "mean_abs_yaw_rad_s": float(np.nanmean(np.abs(yaw[valid]))) if valid.any() else float("nan"),
+    }
+
+
+# ─────────────────────────────────────────────────────────────
 #  Per-tadpole summary
 # ─────────────────────────────────────────────────────────────
 @dataclass
@@ -245,6 +333,19 @@ class KinematicSummary:
     darting_episodes: int = 0
     well_centre: tuple[float, float] = (float("nan"), float("nan"))
     well_radius: float = float("nan")
+    # Whole-animal locomotion metrics
+    path_length_mm: float = float("nan")
+    mobile_time_s: float = 0.0
+    immobile_time_s: float = 0.0
+    mobile_fraction: float = float("nan")
+    immobile_bouts: int = 0
+    centre_fraction: float = float("nan")
+    periphery_fraction: float = float("nan")
+    centre_entries: int = 0
+    mean_radial_mm: float = float("nan")
+    total_rotation_rad: float = float("nan")
+    n_sharp_turns: int = 0
+    mean_abs_yaw_rad_s: float = float("nan")
 
 
 def summarise_tadpole(
@@ -276,6 +377,10 @@ def summarise_tadpole(
 
     circ = detect_circling(x, y, ch["abs_translational"], fps, centre, radius)
     dart = detect_darting(ch["abs_translational"], yaw, fps)
+    # Whole-animal locomotion metrics share the circling well geometry.
+    mob = classify_mobility(ch["speed"], fps)
+    thig = thigmotaxis(x, y, circ["centre"], circ["radius"])
+    turn = turn_statistics(yaw, fps)
     return KinematicSummary(
         n_frames=int(n), fps=float(fps),
         valid_fraction=float(valid.mean()) if n else 0.0,
@@ -285,4 +390,11 @@ def summarise_tadpole(
         darting_time_s=dart["time_s"], darting_fraction=dart["fraction"],
         darting_episodes=dart["n_episodes"],
         well_centre=circ["centre"], well_radius=circ["radius"],
+        path_length_mm=total_path_length(x, y),
+        mobile_time_s=mob["mobile_time_s"], immobile_time_s=mob["immobile_time_s"],
+        mobile_fraction=mob["mobile_fraction"], immobile_bouts=mob["immobile_bouts"],
+        centre_fraction=thig["centre_fraction"], periphery_fraction=thig["periphery_fraction"],
+        centre_entries=thig["centre_entries"], mean_radial_mm=thig["mean_radial_mm"],
+        total_rotation_rad=turn["total_rotation_rad"], n_sharp_turns=turn["n_sharp_turns"],
+        mean_abs_yaw_rad_s=turn["mean_abs_yaw_rad_s"],
     )
