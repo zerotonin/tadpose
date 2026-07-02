@@ -23,9 +23,19 @@ from pathlib import Path
 
 import pandas as pd
 
-#: SBS-format 24-well plate: physical well diameter.  Radius (7.8 mm) doubles as
-#: the crop-centred well-centre coordinate in mm.
+#: SBS-format 24-well plate: physical well diameter.  Radius (7.8 mm) is the
+#: well radius; the crop is centred on the detected well.
 WELL_DIAMETER_MM: float = 15.6
+
+#: Single body marker tracked as the animal's position.  ``tail_base`` is used
+#: (not the mean of all eight markers): the eight-marker mean is tail-biased (five
+#: are tail points) AND averages in whichever markers DLC placed poorly, while the
+#: eyes/frons can be occluded during coiling.  tail_base is the most reliably
+#: detected, non-occluded landmark, so path length / speed / circling are not
+#: inflated by tracking jumps.  It sits behind the snout, so when the animal hugs
+#: the wall it orbits at ~0.8 R rather than touching the wall -- expected, not a
+#: tracking error.
+POSITION_MARKER: str = "tail_base"
 
 
 def _connect(db_file: Path) -> sqlite3.Connection:
@@ -43,12 +53,12 @@ def trials_for_groups(db_file: Path, group_ids: list[int]) -> list[tuple[int, in
 
 
 def load_tadpole(db_file: Path, trial_id: int) -> dict[str, object]:
-    """Load one trial's velocity + centroid trajectory + geometry from the DB.
+    """Load one trial's velocity + tail_base trajectory + geometry from the DB.
 
     Returns a dict ready to splat into
     :func:`tadpose.analysis.kinematics.metrics.summarise_tadpole`: ``thrust``,
-    ``slip``, ``yaw``, ``x``, ``y`` (mm), ``fps``, ``centre`` (mm), ``radius``
-    (mm), plus provenance (``pix2mm``, ``video_id``).
+    ``slip``, ``yaw``, ``x``, ``y`` (mm, the tail_base track), ``fps``, ``centre``
+    (mm), ``radius`` (mm), plus provenance (``pix2mm``, ``video_id``).
     """
     with _connect(db_file) as con:
         vid, pix2mm, fps = con.execute(
@@ -61,16 +71,20 @@ def load_tadpole(db_file: Path, trial_id: int) -> dict[str, object]:
             "from velocity ve join time_series ts on ve.time_series_id = ts.time_series_id "
             "where ts.trial_id = ? order by ts.frame_number",
             con, params=(int(trial_id),))
-        # centroid = per-frame mean over the body markers (AVG in SQL keeps it
-        # to one row per frame instead of eight).
         pos = pd.read_sql_query(
-            "select ts.frame_number, avg(tj.x_pos_mm) as x, avg(tj.y_pos_mm) as y "
+            "select ts.frame_number, tj.x_pos_mm as x, tj.y_pos_mm as y "
             "from trajectory tj join time_series ts on tj.time_series_id = ts.time_series_id "
-            "where ts.trial_id = ? group by ts.frame_number order by ts.frame_number",
-            con, params=(int(trial_id),))
+            "join body_part bp on tj.body_part_id = bp.body_part_id "
+            "where ts.trial_id = ? and bp.body_marker = ? order by ts.frame_number",
+            con, params=(int(trial_id), POSITION_MARKER))
 
     df = vel.merge(pos, on="frame_number", how="inner")
+    x_mm = df["x"].to_numpy(float) / pix2mm             # px -> mm
+    y_mm = df["y"].to_numpy(float) / pix2mm
     radius = WELL_DIAMETER_MM / 2.0
+    # Well centre = crop centre: the split's WellDetector cropped each well
+    # centred on its detected centre (the wall is the crop edge), so this is the
+    # image-based, animal-independent well centre -- no trajectory estimate.
     return {
         "trial_id": int(trial_id),
         "video_id": int(vid),
@@ -79,8 +93,8 @@ def load_tadpole(db_file: Path, trial_id: int) -> dict[str, object]:
         "thrust": df["thrust_mm_s"].to_numpy(float),
         "slip": df["slip_mm_s"].to_numpy(float),
         "yaw": df["yaw_rad_s"].to_numpy(float),
-        "x": df["x"].to_numpy(float) / pix2mm,          # px -> mm
-        "y": df["y"].to_numpy(float) / pix2mm,
-        "centre": (radius, radius),                      # crop-centred well
+        "x": x_mm,
+        "y": y_mm,
+        "centre": (radius, radius),
         "radius": radius,
     }
