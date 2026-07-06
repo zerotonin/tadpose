@@ -26,15 +26,21 @@ import cv2
 import numpy as np
 
 
-def background(video_path: Path, n: int = 30, stride: int = 300) -> np.ndarray:
-    """Median grayscale frame (the static well wall, animal averaged out)."""
+def background(video_path: Path, n: int = 30, stride: int = 300,
+              colour: bool = False) -> np.ndarray:
+    """Median frame (the static well wall, animal averaged out).
+
+    Grayscale by default (what the Hough/ring detector wants).  ``colour=True``
+    returns the BGR median instead -- clearer for a human annotating the rim /
+    meniscus, and it displays naturally rather than through a matplotlib colormap.
+    """
     cap = cv2.VideoCapture(str(video_path))
     frames = []
     for i in range(n):
         cap.set(cv2.CAP_PROP_POS_FRAMES, i * stride)
         ok, fr = cap.read()
         if ok:
-            frames.append(cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY))
+            frames.append(fr if colour else cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY))
     cap.release()
     if not frames:
         raise OSError(f"no frames read from {video_path}")
@@ -147,7 +153,7 @@ def export_well_backgrounds(split_dir: Path, stem: str, out_dir: Path,
         if not f.exists():
             continue
         png = out_dir / f"{stem}_well_{w:02d}.png"
-        cv2.imwrite(str(png), background(f))
+        cv2.imwrite(str(png), background(f, colour=True))
         written.append(png)
     return written
 
