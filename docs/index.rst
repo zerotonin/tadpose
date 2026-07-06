@@ -24,6 +24,7 @@ re-randomisation statistics.
    overview
    installation
    usage
+   ring_cnn
    api
 
 Indices
