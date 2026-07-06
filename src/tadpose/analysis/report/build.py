@@ -122,6 +122,15 @@ def build_markdown(data, figures: dict[str, Path], captions: dict[str, str],
         md.append(f"\n![]({_rel(figures['path_traces'], out)})\n")
         md.append(f"\n**Figure 3.** {captions.get('path_traces','')}\n")
 
+    # 7. spatial occupancy
+    if "occupancy_2d" in figures:
+        md.append("\n## 7  Spatial occupancy\n")
+        md.append(f"![]({_rel(figures['occupancy_2d'], out)})\n")
+        md.append(f"\n**Figure 4.** {captions.get('occupancy_2d','')}\n")
+    if "occupancy_radial" in figures:
+        md.append(f"\n![]({_rel(figures['occupancy_radial'], out)})\n")
+        md.append(f"\n**Figure 5.** {captions.get('occupancy_radial','')}\n")
+
     # notes
     if data.notes:
         md.append("\n## Notes\n")

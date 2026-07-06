@@ -21,7 +21,7 @@ from pathlib import Path
 
 from ... import config
 from ...viz_constants import WONG
-from . import build, figures
+from . import build, figures, occupancy
 from .data import gather
 
 #: prototype behaviour categories that make up the seizure signature.
@@ -76,6 +76,9 @@ def main(argv: list[str] | None = None) -> None:
                    default=config.configured_path("db_path", "databases", "xenopus_DEE.sqlite3"))
     p.add_argument("--fingerprints", type=Path, default=None)
     p.add_argument("--kinematics", type=Path, default=None)
+    p.add_argument("--geometry-json", type=Path, default=None,
+                   help="JSON {video_id: {well: [cx,cy,r]}} (ring-CNN) for the "
+                        "well-centred mm occupancy + radial figures.")
     p.add_argument("--output-dir", type=Path, required=True)
     a = p.parse_args(argv)
 
@@ -127,6 +130,24 @@ def main(argv: list[str] | None = None) -> None:
             figs["path_traces"] = out / "fig_path_traces.png"
             caps["path_traces"] = ("Representative tail_base path traces per group (well outline "
                                    "shown), up to six animals per group.")
+
+    if a.geometry_json:
+        import json
+        geom = json.loads(Path(a.geometry_json).read_text(encoding="utf-8"))
+        gids = list(gid_to_label)
+        acc, edges, r_edges = occupancy.gather(a.db, gids, gid_to_label, geom)
+        gorder = [g for g in order if g in acc]
+        paths = occupancy.plot_occupancy_2d(acc, edges, out / "fig_occupancy_2d", gorder)
+        figs["occupancy_2d"] = _png(paths)
+        caps["occupancy_2d"] = ("Position occupancy per group in well-centred mm (ring-CNN "
+                                "geometry), each map normalised to sum=1 so groups compare on "
+                                "spatial shape not animal count; viridis on a log colour scale. "
+                                "White circle: well wall (R=7.8 mm).")
+        paths = occupancy.plot_radial(acc, r_edges, out / "fig_occupancy_radial", gorder, colours)
+        figs["occupancy_radial"] = _png(paths)
+        caps["occupancy_radial"] = ("Radial occupancy: probability of the tadpole being at distance "
+                                    "R (mm) from the well centre, sum-normalised per group. Dashed "
+                                    "line: well wall (R=7.8 mm).")
 
     md = build.build_markdown(data, figs, caps, appendix, out)
     md_path = out / "report.md"
