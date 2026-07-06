@@ -35,7 +35,9 @@ SCALARS: list[str] = [
 
 
 def run(db_file: Path, group_ids: list[int], output_dir: Path,
-        group_map: dict[int, str] | None = None, traces_per_group: int = 6):
+        group_map: dict[int, str] | None = None, traces_per_group: int = 6,
+        pix2mm_override: dict[int, float] | None = None,
+        geometry: dict | None = None):
     """Compute kinematics for every tadpole in the groups; write tables + figures."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +48,7 @@ def run(db_file: Path, group_ids: list[int], output_dir: Path,
     traces: dict[str, dict[str, object]] = {}
     seen: dict[str, int] = {}
     for tid, gid in tqdm(trials, desc="kinematics"):
-        d = load_tadpole(db_file, tid)
+        d = load_tadpole(db_file, tid, pix2mm_override, geometry)
         summaries[tid] = summarise_tadpole(
             d["thrust"], d["slip"], d["yaw"], d["x"], d["y"],
             d["fps"], d["centre"], d["radius"])
@@ -80,13 +82,27 @@ def main(argv: list[str] | None = None) -> None:
                    help="Optional 'gid:name,gid:name' labels (e.g. 19:ctrl,24:Ap2b3).")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--traces-per-group", type=int, default=6)
+    p.add_argument("--pix2mm-json", type=Path, default=None,
+                   help="JSON {video_id: pix2mm} overriding the stored scale "
+                        "(e.g. upper/lower-edge geometry); rescales speeds too.")
+    p.add_argument("--geometry-json", type=Path, default=None,
+                   help="JSON {video_id: {well: [cx,cy,r]}} for per-well well-centred "
+                        "mm positions (ring-CNN); preferred over --pix2mm-json.")
     a = p.parse_args(argv)
 
     gids = [int(g) for g in a.groups.split(",")]
     gmap = None
     if a.group_map:
         gmap = {int(k): v for k, v in (kv.split(":") for kv in a.group_map.split(","))}
-    df = run(a.db, gids, a.output_dir, gmap, a.traces_per_group)
+    import json
+    override = None
+    if a.pix2mm_json:
+        override = {int(k): float(v) for k, v in
+                    json.loads(Path(a.pix2mm_json).read_text(encoding="utf-8")).items()}
+    geometry = None
+    if a.geometry_json:
+        geometry = json.loads(Path(a.geometry_json).read_text(encoding="utf-8"))
+    df = run(a.db, gids, a.output_dir, gmap, a.traces_per_group, override, geometry)
     print(f"kinematics: {len(df)} tadpoles, {df['group'].nunique()} groups -> {a.output_dir}")
 
 
