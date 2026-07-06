@@ -37,8 +37,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Column, DateTime, Float, ForeignKey, Integer, String, Table, Text,
-    and_, create_engine,
+    Column, DateTime, Float, ForeignKey, Index, Integer, String, Table, Text,
+    UniqueConstraint, and_, create_engine,
 )
 from sqlalchemy.orm import (
     DeclarativeBase, Session, relationship, sessionmaker,
@@ -212,6 +212,9 @@ class Trial(Base):
     well_type = relationship("WellType", back_populates="trials")
     tadpole_group = relationship("TadpoleGroup", back_populates="trials")
     time_series = relationship("TimeSeries", back_populates="trial")
+    well_geometry = relationship("WellGeometry", back_populates="trial", uselist=False)
+    run_trials = relationship("ClusteringRunTrial", back_populates="trial")
+    cluster_proportions = relationship("FrameClusterProportion", back_populates="trial")
 
 
 class WellType(Base):
@@ -347,6 +350,170 @@ class Clustering(Base):
 
     clustering_type = relationship("ClusteringType", back_populates="clusterings")
     time_series = relationship("TimeSeries", back_populates="clusterings")
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Ring-CNN geometry + re-clustering results  « 2026 pipeline » │
+# └──────────────────────────────────────────────────────────────┘
+
+class WellGeometry(Base):
+    """Per-well ring-CNN geometry: centre, radius, and pixel scale.
+
+    Keyed 1:1 on ``trial_id`` — a trial already *is* one well of one video, so
+    ``video_id`` and ``well_number`` are reached through the trial, not stored
+    again here.  ``pix2mm = 2 * r_px / 15.6`` (well diameter, caliper-confirmed).
+    A position becomes well-centred mm via ``(x_px - cx_px) / pix2mm``;
+    thigmotaxis uses ``(cx_px, cy_px)``.  Geometry source of truth, replacing
+    ``video.pix2mm``.  (Empty wells carry no trial, hence no geometry row —
+    they are never analysed.)
+    """
+    __tablename__ = "well_geometry"
+
+    trial_id = Column(Integer, ForeignKey("trial.trial_id"), primary_key=True)
+    cx_px = Column(Float)
+    cy_px = Column(Float)
+    r_px = Column(Float)
+    pix2mm = Column(Float)
+    detector = Column(String(255))          # provenance, e.g. "ring_cnn/run_all_max"
+    created = Column(DateTime)
+
+    trial = relationship("Trial", back_populates="well_geometry")
+
+
+class ClusteringRun(Base):
+    """One stored clustering solution plus its full provenance.
+
+    A run fixes the feature set, k, distance, init and seed.  The z-score μ/σ
+    live relationally in :class:`ClusteringFeatureStat`, and which trials were
+    fit (direct) vs projected (assigned) in :class:`ClusteringRunTrial` — so
+    every label is fully reproducible from the DB alone.  Multiple runs coexist
+    (posture-diff+velocity at one k, velocity-only at another, candidate k).
+    """
+    __tablename__ = "clustering_run"
+
+    clustering_run_id = Column(Integer, primary_key=True)
+    name = Column(String(255))              # "recluster2026_posture_diff_velocity_k36"
+    feature_set = Column(String(255))       # "posture_diff_velocity" | "velocity_only"
+    n_features = Column(Integer)            # 16 | 3
+    k = Column(Integer)
+    distance = Column(String(64))           # "euclidean"
+    init = Column(String(64))               # "k-means||"
+    seed = Column(Integer)
+    code_version = Column(String(128))      # git describe / setuptools-scm
+    created = Column(DateTime)
+    notes = Column(Text)
+
+    feature_stats = relationship("ClusteringFeatureStat", back_populates="clustering_run")
+    run_trials = relationship("ClusteringRunTrial", back_populates="clustering_run")
+    frame_clusters = relationship("FrameCluster", back_populates="clustering_run")
+    proportions = relationship("FrameClusterProportion", back_populates="clustering_run")
+
+
+class ClusteringFeatureStat(Base):
+    """The z-score μ/σ of one feature under one run — stored, not a file path.
+
+    New data (genetic edits) are normalised with *these* values before nearest-
+    centroid assignment, so the normalisation travels with the run in the DB.
+    """
+    __tablename__ = "clustering_feature_stat"
+
+    clustering_feature_stat_id = Column(Integer, primary_key=True)
+    clustering_run_id = Column(Integer, ForeignKey("clustering_run.clustering_run_id"))
+    feature_index = Column(Integer)         # column order in the feature vector
+    feature_name = Column(String(64))       # "thrust_mm_s", "left_eye_x_diff", …
+    mu = Column(Float)
+    sigma = Column(Float)
+
+    clustering_run = relationship("ClusteringRun", back_populates="feature_stats")
+
+    __table_args__ = (
+        UniqueConstraint("clustering_run_id", "feature_index",
+                         name="uq_feature_stat_run_index"),
+    )
+
+
+class ClusteringRunTrial(Base):
+    """Per-trial membership of a run: was this animal clustered or projected?
+
+    One row per (run, trial).  ``assignment`` is a property of the whole trial,
+    not the frame, so it lives here — never duplicated across the trial's
+    millions of :class:`FrameCluster` rows.  A frame's provenance is
+    ``frame_cluster → time_series → trial → clustering_run_trial.assignment``.
+
+    * ``"direct"``   — trial was in the k-means fit (WT / PTZ / 4-AP); these
+      animals *define* the prototypes.
+    * ``"assigned"`` — trial projected onto the existing clustering by nearest
+      centroid (the genetic edits); scored against prototypes, did not shape
+      them.
+    """
+    __tablename__ = "clustering_run_trial"
+
+    clustering_run_id = Column(Integer, ForeignKey("clustering_run.clustering_run_id"),
+                               primary_key=True)
+    trial_id = Column(Integer, ForeignKey("trial.trial_id"), primary_key=True)
+    assignment = Column(String(16))         # "direct" | "assigned"
+
+    clustering_run = relationship("ClusteringRun", back_populates="run_trials")
+    trial = relationship("Trial", back_populates="run_trials")
+
+    __table_args__ = (
+        Index("ix_run_trial_run_assignment", "clustering_run_id", "assignment"),
+    )
+
+
+class FrameCluster(Base):
+    """Cluster label of one frame under one :class:`ClusteringRun`.
+
+    Deliberately narrow — the big table.  ``trial_id`` and ``frame_number`` are
+    reached through ``time_series``; the direct/assigned distinction through
+    :class:`ClusteringRunTrial`; so nothing is duplicated per frame.  Alex's
+    legacy labels stay in ``clustering`` for the ARI cross-check.
+    """
+    __tablename__ = "frame_cluster"
+
+    frame_cluster_id = Column(Integer, primary_key=True)
+    clustering_run_id = Column(Integer, ForeignKey("clustering_run.clustering_run_id"))
+    time_series_id = Column(Integer, ForeignKey("time_series.time_series_id"))
+    label = Column(Integer)
+
+    clustering_run = relationship("ClusteringRun", back_populates="frame_clusters")
+    time_series = relationship("TimeSeries")
+
+    __table_args__ = (
+        UniqueConstraint("clustering_run_id", "time_series_id",
+                         name="uq_frame_cluster_run_ts"),
+        Index("ix_frame_cluster_run_label", "clustering_run_id", "label"),
+    )
+
+
+class FrameClusterProportion(Base):
+    """Pre-aggregated PM abundance per ``(run, trial)`` — the fingerprint source.
+
+    ``runs × trials × k`` rows (thousands), not 64 M, so per-animal fingerprint
+    queries never scan ``frame_cluster``.  ``n_frames`` is the raw count;
+    ``proportion = n_frames / that trial's total labelled frames under the run``
+    (the value fingerprints use).  A stored aggregate, so it is derived data:
+    rebuilt from ``frame_cluster`` after each run, which stays the source of
+    truth.  Split by cohort via ``clustering_run_trial.assignment``.
+    """
+    __tablename__ = "frame_cluster_proportion"
+
+    frame_cluster_proportion_id = Column(Integer, primary_key=True)
+    clustering_run_id = Column(Integer, ForeignKey("clustering_run.clustering_run_id"))
+    trial_id = Column(Integer, ForeignKey("trial.trial_id"))
+    label = Column(Integer)
+    n_frames = Column(Integer)
+    proportion = Column(Float)
+
+    clustering_run = relationship("ClusteringRun", back_populates="proportions")
+    trial = relationship("Trial", back_populates="cluster_proportions")
+
+    __table_args__ = (
+        UniqueConstraint("clustering_run_id", "trial_id", "label",
+                         name="uq_fcp_run_trial_label"),
+        Index("ix_fcp_run_label", "clustering_run_id", "label"),
+        Index("ix_fcp_run_trial", "clustering_run_id", "trial_id"),
+    )
 
 
 # ┌──────────────────────────────────────────────────────────────┐
