@@ -52,11 +52,14 @@ def parse_transgene(transgene: str) -> dict[str, object]:
     s = (transgene or "").strip()
     low = s.lower()
     is_empty = "no tad" in low or s in ("", "NO TADOLE")
-    is_control = ("5mm" in low or "null" in low) and not is_empty
+    # 5mm / null injection controls, and plain wildtype, are all control cohorts.
+    is_control = ("5mm" in low or "null" in low or low == "wt") and not is_empty
     gene = "empty" if is_empty else None
-    for key in ("neurod2", "eef1a2", "eelfa2", "eefla2", "ap2b3", "egfla2"):
+    # ap2b3 is a transposition typo for the real gene Ap3b2 -- resolve both to Ap3b2.
+    for key in ("neurod2", "eef1a2", "eelfa2", "eefla2", "ap3b2", "ap2b3", "ppp3ca", "egfla2"):
         if key in low:
-            gene = {"neurod2": "NeuroD2", "ap2b3": "Ap2b3"}.get(key, "Eef1a2")
+            gene = {"neurod2": "NeuroD2", "ap3b2": "Ap3b2", "ap2b3": "Ap3b2",
+                    "ppp3ca": "PPP3CA"}.get(key, "Eef1a2")
             break
     if gene is None:
         gene = "WT/other"

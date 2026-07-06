@@ -13,7 +13,7 @@ def test_parse_transgene_edited_vs_control():
     assert edited["gene"] == "NeuroD2" and not edited["is_control"]
     ctrl = parse_transgene("NeuroD2_g15_5MM")
     assert ctrl["is_control"] and ctrl["guide"] == "g15_5MM"
-    assert parse_transgene("Ap2b3 g2")["gene"] == "Ap2b3"
+    assert parse_transgene("Ap2b3 g2")["gene"] == "Ap3b2"   # transposition typo -> real gene
     assert parse_transgene("NO TADOLE")["is_empty"]
 
 

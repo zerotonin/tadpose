@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--groups", type=str, required=True,
                    help="Comma-separated tadpole_group_ids to run.")
     p.add_argument("--group-map", type=str, default=None,
-                   help="Optional 'gid:name,gid:name' labels (e.g. 19:ctrl,24:Ap2b3).")
+                   help="Optional 'gid:name,gid:name' labels (e.g. 19:ctrl,24:Ap3b2).")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--traces-per-group", type=int, default=6)
     p.add_argument("--pix2mm-json", type=Path, default=None,
