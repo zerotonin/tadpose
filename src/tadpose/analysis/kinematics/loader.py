@@ -97,7 +97,10 @@ def load_tadpole(db_file: Path, trial_id: int,
     y_px = df["y"].to_numpy(float)
     radius = WELL_DIAMETER_MM / 2.0
 
-    g = (geometry or {}).get(str(int(vid)), {}).get(str(int(well)))
+    # DB well_number is 1-indexed (1..24); the ring-CNN geometry (built from the
+    # crop files) is 0-indexed (well_00..well_23).  DB well N is physically crop
+    # well N-1 (verified by matching DB tail_base pixels to the crop h5).
+    g = (geometry or {}).get(str(int(vid)), {}).get(str(int(well) - 1))
     if g is not None:
         # Per-well source of truth: origin at the CNN well centre, this well's scale.
         cx, cy, r_px = (float(v) for v in g)
