@@ -180,10 +180,11 @@ def run_kmeans(
 
     t0 = datetime.datetime.now()
 
-    # « load and excise »  (mmap: concurrent packed fits share ONE page-cache
-    # copy of the matrix instead of each loading its own -- keeps packed workers
-    # off the host-RAM OOM cliff; delSize=0 passes the mmap straight to the GPU.)
-    data = np.load(data_path, mmap_mode="r")
+    # « load and excise »  (full in-RAM load.  mmap was tried to shrink host RAM
+    # for tightly-packed workers, but once each worker reserves enough --mem it is
+    # unnecessary, and a plain load is the simplest choice that behaves the same on
+    # every GPU.)
+    data = np.load(data_path)
     data = leave_out(data, del_size, del_pos)
 
     # « GPU transfer »
