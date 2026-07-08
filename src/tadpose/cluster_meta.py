@@ -222,8 +222,8 @@ class ClusterMetaAnalysis:
         """
         centroids_de_zscored = np.zeros(shape=centroids.shape)
         for i in range(centroids.shape[1]):
-            centroids_de_zscored[:,i] = centroids[:,i] * sigma[i] + mu[1]
-        return centroids_de_zscored 
+            centroids_de_zscored[:,i] = centroids[:,i] * sigma[i] + mu[i]
+        return centroids_de_zscored
 
 
     def normalize_centroids(self, centroids):
