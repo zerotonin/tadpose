@@ -128,7 +128,11 @@ class ClusterMetaAnalysis:
             for j in range(i + 1, num_cas):
                 cost_matrix = np.linalg.norm(centroids_list[i][:, np.newaxis, :] - centroids_list[j], axis=2)
                 row_ind, col_ind = linear_sum_assignment(cost_matrix)
-                total_cost = cost_matrix[row_ind, col_ind].sum()
+                # k-normalised: mean matched-centroid shift, not the sum over the
+                # k pairs.  The summed form scales mechanically with k, so its
+                # minimum sits trivially at small k; the per-centroid mean makes
+                # instability comparable across k.
+                total_cost = cost_matrix[row_ind, col_ind].mean()
                 # Record the total cost in the distances matrix
                 distances[i, j] = total_cost
                 distances[j, i] = total_cost
