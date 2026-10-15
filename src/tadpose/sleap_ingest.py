@@ -266,3 +266,11 @@ def parse_well_label(label: str) -> int:
         raise ValueError(f"not a 24-well label: {label!r}")
     row, col = match.groups()
     return PLATE_ROWS.index(row) * PLATE_COLS + int(col)
+
+
+def format_well_label(well_number: int) -> str:
+    """Inverse of :func:`parse_well_label`: ``1`` -> ``"A1"``, ``24`` -> ``"D6"``."""
+    if not 1 <= well_number <= len(PLATE_ROWS) * PLATE_COLS:
+        raise ValueError(f"not a 24-well number: {well_number}")
+    row, col = divmod(well_number - 1, PLATE_COLS)
+    return f"{PLATE_ROWS[row]}{col + 1}"
