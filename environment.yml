@@ -19,6 +19,7 @@ dependencies:
   - prettytable>=3.0
   - tqdm>=4.60
   - kneed>=0.8
+  - pyarrow>=14
   - pip
   - pip:
     - scikit-posthocs>=0.7
