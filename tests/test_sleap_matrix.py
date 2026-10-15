@@ -14,11 +14,13 @@ from tadpose.sleap_cleaning import clean_track
 from tadpose.sleap_constants import CLUSTER_FEATURES, OMIT_NO_EYES, SLEAP_NODES
 from tadpose.sleap_features import compute_track_features
 from tadpose.sleap_matrix import (
+    VELOCITY_ZSCORED_NAME,
     apply_zscore,
     build_clustering_data,
     load_clustering_rows,
     save_clustering_data,
     split_usable_rows,
+    write_velocity_slice,
 )
 
 N = 80
@@ -93,3 +95,14 @@ def test_saved_bundle(tables: list[pd.DataFrame], tmp_path: Path) -> None:
     assert manifest["code_version"] == "test"
     summary = pd.read_csv(tmp_path / "omission_summary.csv")
     assert summary.total.sum() == 2 * N
+
+
+def test_velocity_slice_is_the_first_three_zscored_columns(tables: list[pd.DataFrame], tmp_path: Path) -> None:
+    data = build_clustering_data(tables)
+    save_clustering_data(data, tmp_path)
+    vel = np.load(tmp_path / VELOCITY_ZSCORED_NAME)
+    np.testing.assert_array_equal(vel, data.zscored[:, :3])
+
+    (tmp_path / VELOCITY_ZSCORED_NAME).unlink()
+    write_velocity_slice(tmp_path)
+    np.testing.assert_array_equal(np.load(tmp_path / VELOCITY_ZSCORED_NAME), vel)
