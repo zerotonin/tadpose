@@ -53,9 +53,62 @@ NOMINAL_FPS: float = 50.0
 # A frame interval above this multiple of the nominal one means the camera
 # dropped frames (the measured jitter is +/- 1 ms on a 20 ms interval).
 DROPPED_FRAME_TOLERANCE: float = 1.5
-# Longest run of invalid slots that is interpolated; longer runs are
-# excluded from the clustering (kept in the DB).  5 slots = 100 ms at 50 fps.
-MAX_INTERP_FRAMES: int = 5
+# Longest run of invalid slots that is interpolated (gut and tail nodes
+# only); longer runs stay NaN and drop out of the clustering.  25 slots =
+# half a second at 50 fps.
+MAX_INTERP_FRAMES: int = 25
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Cleaning gates  « provisional, from the Sept-2024 plates »   │
+# └──────────────────────────────────────────────────────────────┘
+
+# A node reading below this SLEAP score is rejected.  Caroline's eye cut-off;
+# rejects <= 0.1 % of gut/tail readings and ~3 % of eyes on a 4-AP plate.
+MIN_NODE_SCORE: float = 0.3
+# An eye closer than this to the gut is a mis-placed eye (never observed
+# below 6.5 px on the Sept-2024 plates, so it only catches gross errors).
+EYE_ON_CENTRE_PX: float = 3.0
+# A body segment longer than this multiple of the animal's own median length
+# rejects its distal node (the tail tip snapping onto the well rim).
+MAX_SEGMENT_FACTOR: float = 2.0
+# A gut jump above this, in AND straight back out, is a one-frame teleport
+# and rejects the whole frame.  99.99th percentile is ~14 px; 30 px/frame is
+# ~4 mm per 20 ms, above real fast starts.
+MAX_CENTRE_JUMP_PX: float = 30.0
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Node states + omit reasons  « the audit trail »              │
+# └──────────────────────────────────────────────────────────────┘
+
+# Per-node state in the stage-1 (interpolated) table.
+STATE_OBSERVED: int = 0
+STATE_INTERPOLATED: int = 1
+STATE_EYE_COPIED: int = 2          # hidden eye given the visible eye's x/y
+STATE_MISSING: int = 3
+
+# Why a stage-2 row carries no features, checked in this order.
+OMIT_DROPPED: str = "camera_dropped"      # no video frame behind the slot
+OMIT_NO_EYES: str = "no_eyes"             # both eyes missing: no frons
+OMIT_MISSING_NODE: str = "missing_node"   # gut/tail gap too long to fill
+OMIT_NO_PREVIOUS: str = "no_previous"     # previous slot unusable: no diff
+OMIT_REASONS: tuple[str, ...] = (
+    OMIT_DROPPED, OMIT_NO_EYES, OMIT_MISSING_NODE, OMIT_NO_PREVIOUS,
+)
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Feature layout  « the 16 clustering columns, in order »      │
+# └──────────────────────────────────────────────────────────────┘
+
+VELOCITY_FEATURES: tuple[str, ...] = ("thrust_mm_s", "slip_mm_s", "yaw_rad_s")
+# Frons-aligned coordinates that vary: frons is the origin and centre_y is
+# 0 by construction, which leaves 13 of the 7 x 2 node coordinates.
+POSTURE_COORDS: tuple[str, ...] = (
+    "left_eye_x", "left_eye_y", "right_eye_x", "right_eye_y", "centre_x",
+    "tail1_x", "tail1_y", "tail2_x", "tail2_y", "tail3_x", "tail3_y",
+    "tail_tip_x", "tail_tip_y",
+)
+POSTURE_DIFF_FEATURES: tuple[str, ...] = tuple(f"{c}_diff" for c in POSTURE_COORDS)
+CLUSTER_FEATURES: tuple[str, ...] = VELOCITY_FEATURES + POSTURE_DIFF_FEATURES
 
 # ┌──────────────────────────────────────────────────────────────┐
 # │ Chunk files  « five-minute _wells.csv pieces »               │
