@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -69,3 +71,27 @@ def make_track(
         [(node, coord) for node in SLEAP_NODES for coord in SLEAP_COORDS]
     )
     return WellTrack("synthetic_video", well_label, 1, meta, pose)
+
+
+def write_chunk_csvs(
+    folder: Path,
+    video_stem: str,
+    xy_by_well: dict[str, np.ndarray],
+    chunk_size: int = 50,
+) -> None:
+    """Write Caroline-format ``_wells.csv`` chunks for (slots, nodes, 2) tracks."""
+    n = len(next(iter(xy_by_well.values())))
+    rows = []
+    for well, xy in xy_by_well.items():
+        for frame in range(n):
+            row = {"frame": frame, "time_s": round(frame / NOMINAL_FPS, 3),
+                   "frame_interval_ms": 20.0, "after_gap": 0, "well": well, "instance_score": 0.9}
+            for j, node in enumerate(SLEAP_NODES):
+                row[f"{node}_x"], row[f"{node}_y"] = xy[frame, j]
+                row[f"{node}_score"] = 0.9
+            rows.append(row)
+    table = pd.DataFrame(rows)
+    for start in range(0, n, chunk_size):
+        end = min(start + chunk_size, n) - 1
+        name = f"{video_stem}_chunk{start // chunk_size + 1:03d}_f{start}-{end}_wells.csv"
+        table[(table.frame >= start) & (table.frame <= end)].to_csv(folder / name, index=False)
