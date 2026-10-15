@@ -176,6 +176,35 @@ file                      content
 ========================  ==============================================================
 
 
+Running it
+----------
+
+Locally, with explicit paths (or the ``local`` profile keys
+``sleap_predictions_root``, ``sleap_geometry_csv``, ``sleap_output_root``):
+
+.. code-block:: bash
+
+   tadpose sleap-features --list --predictions <predictions folder>
+   tadpose sleap-features --all  --predictions <predictions folder> \
+       --geometry <sleap_well_geometry.csv> --out <output root>
+   tadpose sleap-matrix --out-root <output root> --expect 12
+
+The start-frame trim of each video is read from Caroline's ``batch_log.txt``
+(``skip_frames=``); without that log ``--skip-start-frames`` must be given.
+On the cluster, ``bash slurm/submit_sleap.sh`` runs one array task per video
+and chains the merge after all of them succeed (see ``slurm/README.md``).
+Output layout under the output root:
+
+.. code-block:: text
+
+   stage1_interpolated/<video>_interpolated.csv
+   stage2_features/<video>_features.csv
+   clustering/        features_raw.npy, features_zscored.npy, rows.parquet,
+                      omitted_rows.parquet, musigma.csv, omission_summary.csv,
+                      manifest.json (includes code version + git commit)
+   logs/              SLURM task and merge logs
+
+
 Tracing a cluster label back to the footage
 -------------------------------------------
 

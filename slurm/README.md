@@ -35,6 +35,9 @@ placeholder; override it on submission with
 | `array_clustering.sh` | Same sweep as a SLURM job array | `python -m tadpose.clustering` |
 | `flexible_clustering.sh` | Interactive sweep with partition cycling | `python -m tadpose.clustering` |
 | `run_slurm_superprotos.sh` | Per-trial + aggregate superprototype counts | `python -m tadpose.analysis.SlurmSuperPrototypesAnalysis` / `AggregateSuperPrototypesAnalysis` |
+| `submit_sleap.sh` | SLEAP pipeline: array of per-video tasks + chained merge (run on the login node) | `sbatch` |
+| `sleap_features.sh` | One SLEAP video, stages 0 -> 2 (array task) | `tadpose sleap-features --slurm-array` |
+| `sleap_matrix.sh` | Stage 3 clustering bundle, after all tasks succeed | `tadpose sleap-matrix --expect N` |
 | `load_paths.sh` | Export the `hpc` profile as `TADPOSE_*` vars | `python -m tadpose.config --export` |
 
 The clustering scripts check whether a `(k, del_size, del_pos)` combination
@@ -56,3 +59,27 @@ same `tadpose.clustering` module.  The feature subset is chosen when the
 z-scored matrix is **assembled** (the clustering step simply clusters
 whatever matrix it is given), so select the option matching the matrix you
 built and pass it as the data file.
+
+## SLEAP pipeline
+
+Turns Caroline Beck's SLEAP `_wells.csv` exports into the clustering bundle
+(data flow: `docs/sleap_pipeline.rst`).  Needs these `hpc` profile keys in
+`local_paths.json`: `sleap_predictions_root`, `sleap_geometry_csv`,
+`sleap_output_root`, `cpu_partition`, `python_interpreter` (and optionally
+`account`).  The package does not need to be installed: the scripts put the
+checkout's `src/` on `PYTHONPATH`.
+
+```bash
+# from the workstation: copy predictions + the ring-geometry table
+rsync -a <local SLEAP_2026_predictions>/ <cluster>:<sleap_2026 folder>/
+
+# on the login node, in the checkout (sleap branch)
+bash slurm/submit_sleap.sh            # one CPU task per video, then the merge
+bash slurm/submit_sleap.sh --force    # redo videos that already have outputs
+```
+
+Per video ~3 min and ~4.5 GB (16 GB requested); the merge needs ~38 GB for
+the 12 Sept-2024 plates (64 GB requested).  A task skips a video whose
+stage-1 and stage-2 CSVs exist, outputs appear only once fully written, and
+the merge refuses to run unless all N feature CSVs are present.  Logs go to
+`<sleap_output_root>/logs/`.

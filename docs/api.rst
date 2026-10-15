@@ -58,6 +58,15 @@ SLEAP pipeline
 .. automodule:: tadpose.sleap_matrix
    :members:
 
+.. automodule:: tadpose.sleap_config
+   :members:
+
+.. automodule:: tadpose.sleap_run
+   :members:
+
+.. automodule:: tadpose.sleap_merge
+   :members:
+
 Clustering
 ----------
 
