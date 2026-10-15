@@ -23,6 +23,8 @@ _COMMANDS: dict[str, str] = {
     "metrics":             "tadpose.analysis.internal_metrics",
     "sleap-features":      "tadpose.sleap_run",
     "sleap-matrix":        "tadpose.sleap_merge",
+    "sweep":               "tadpose.sweep",
+    "kselect":             "tadpose.kselect",
 }
 
 
