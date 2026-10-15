@@ -82,6 +82,9 @@ Running a sweep
 
    tadpose sweep status --sweep-dir <sweep>
 
+   # one-screen monitor, refreshed every minute inside a single ssh session
+   ssh -t <cluster> 'watch -n 60 <checkout>/slurm/sweep_watch.sh <sweep>'
+
 Workers pull fits from a shared queue on the filesystem: a fit is **done** when
 its meta JSON exists, **claimed** by an atomic lock file that is refreshed every
 minute (a claim older than five minutes belongs to a dead worker and is taken

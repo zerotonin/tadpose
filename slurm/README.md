@@ -41,6 +41,7 @@ placeholder; override it on submission with
 | `submit_sweep.sh` | k-means stability sweep: GPU workers, or the k-selection afterwards (login node) | `sbatch` |
 | `sweep_worker.sh` | One GPU worker: detect the card, pack fits, drain the shared pool | `tadpose sweep work` |
 | `kselect.sh` | k-selection tables + agreement figure for every feature set | `tadpose kselect` |
+| `sweep_watch.sh` | One-screen sweep monitor: progress per delSize, claims, parked fits, cards, trailing-hour ETA (login node, under `watch`) | `find`, `squeue`, `sacct` |
 | `load_paths.sh` | Export the `hpc` profile as `TADPOSE_*` vars | `python -m tadpose.config --export` |
 
 The clustering scripts check whether a `(k, del_size, del_pos)` combination
