@@ -41,8 +41,15 @@ Node names are kept exactly as in the SLEAP project:
 * ``centre`` is the **gut**, not the tail base; ``tail1`` is the tail base.
 * **Frons** = midpoint of the two eyes. If only one eye is visible, that eye is
   the frons (a side-swimming tadpole hides one eye directly below the other).
-* **Body axis** = gut → frons. Heading (``body_angle_rad``) is its direction.
-* **Thrust, slip and yaw** are measured at the gut.
+* **Posture axis** = gut → frons (``posture_angle_rad``); the aligned posture puts
+  the gut on +x, so ``centre_y`` is 0.
+* **Kinematics are DLC-style**, so the SLEAP and DLC runs measure the same thing:
+  heading (``heading_rad``) = tail base (``tail1``) → frons; thrust and slip
+  describe the mean of both eyes and the tail base (``speed_point_*``). The
+  three-point mean damps single-node jitter, and the long heading axis keeps
+  pixel noise out of yaw. A first version measured at the gut with a gut → frons
+  heading; it gave 20 to 40 % wider shoulders in all three speed distributions
+  than the (fps-corrected) DLC run, i.e. more small-amplitude jitter.
 
 
 Well scale (``px_per_mm``)
@@ -124,9 +131,11 @@ Stage 2: the feature CSV
 
 :mod:`tadpose.sleap_features` computes, for every slot:
 
-* ``centre_x_px, centre_y_px, frons_x_px, frons_y_px, body_angle_rad``;
-* **velocity**: ``thrust_mm_s`` (forward) and ``slip_mm_s`` (leftward) of the gut
-  displacement since the previous slot, rotated into the current body frame;
+* ``speed_point_x_px, speed_point_y_px, frons_x_px, frons_y_px, heading_rad,
+  posture_angle_rad``;
+* **velocity**: ``thrust_mm_s`` (forward) and ``slip_mm_s`` (leftward) of the
+  speed-point displacement since the previous slot, rotated into the current
+  heading frame;
   ``yaw_rad_s`` = wrapped heading change, so turning through ±π gives no 2π spike.
   Divided by the real slot interval (``time_s``) and the well's ``px_per_mm``;
 * **posture** ``<coord>_mm``: frons at the origin, gut on the +x axis, in mm.
