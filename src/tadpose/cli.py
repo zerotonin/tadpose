@@ -21,6 +21,8 @@ _COMMANDS: dict[str, str] = {
     "markov-chain-groups": "tadpose.analysis.markov_chain_groups",
     "cluster-meta":        "tadpose.cluster_meta",
     "metrics":             "tadpose.analysis.internal_metrics",
+    "sleap-features":      "tadpose.sleap_run",
+    "sleap-matrix":        "tadpose.sleap_merge",
 }
 
 
