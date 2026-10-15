@@ -37,6 +37,24 @@ Feature extraction
 .. automodule:: tadpose.normalisation
    :members:
 
+SLEAP pipeline
+--------------
+
+.. automodule:: tadpose.sleap_constants
+   :members:
+
+.. automodule:: tadpose.sleap_ingest
+   :members:
+
+.. automodule:: tadpose.sleap_cleaning
+   :members:
+
+.. automodule:: tadpose.sleap_features
+   :members:
+
+.. automodule:: tadpose.sleap_matrix
+   :members:
+
 Clustering
 ----------
 

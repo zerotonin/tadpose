@@ -25,6 +25,7 @@ re-randomisation statistics.
    installation
    usage
    ring_cnn
+   sleap_pipeline
    api
 
 Indices
