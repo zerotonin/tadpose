@@ -5,7 +5,10 @@
       "data_root": "/path/to/your/tadpole_project",
       "code_root": "/path/to/your/checkout/tadpose",
       "python_interpreter": "python",
-      "dlc_config_path": "/path/to/deeplabcut_models/single_tadpole/config.yaml"
+      "dlc_config_path": "/path/to/deeplabcut_models/single_tadpole/config.yaml",
+      "sleap_predictions_root": "/path/to/SLEAP_2026_predictions/sept2024_pharmacology",
+      "sleap_geometry_csv": "/path/to/SLEAP_2026_predictions/ring_geometry/sleap_well_geometry.csv",
+      "sleap_output_root": "/path/to/results/sleap_2026"
     },
     "hpc": {
       "data_root": "/path/to/cluster/tadpole_project",
@@ -19,7 +22,11 @@
       "cluster_centroids": "/path/to/cluster/tadpole_project/cluster_analysis/sep18_canonical/canonical_k36_centroids.npy",
       "conda_env": "deeplabcut",
       "partition": "<your-slurm-partition>",
-      "account": "<your-slurm-account>"
+      "account": "<your-slurm-account>",
+      "sleap_predictions_root": "/path/to/cluster/tadpole_project/video_data/sleap_2026/sept2024_pharmacology",
+      "sleap_geometry_csv": "/path/to/cluster/tadpole_project/video_data/sleap_2026/ring_geometry/sleap_well_geometry.csv",
+      "sleap_output_root": "/path/to/cluster/tadpole_project/results/sleap_2026",
+      "cpu_partition": "<your-cpu-slurm-partition>"
     }
   }
 }
