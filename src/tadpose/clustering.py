@@ -163,6 +163,7 @@ def run_kmeans(
     random_state: int,
     data_path: Path,
     save_dir: Path,
+    save_labels: bool = True,
 ) -> None:
     """Single k-means run with leave-out, designed for SLURM.
 
@@ -174,6 +175,8 @@ def run_kmeans(
         random_state: RNG seed for centroid initialisation.
         data_path:    Path to z-scored .npy feature matrix.
         save_dir:     Root directory for structured output.
+        save_labels:  Write the per-row labels (the sweep keeps them for one
+                      delSize-0 clone per k only; they are ~N int32 each).
     """
     import cupy as cp  # lazy — GPU only
     from cuml.cluster import KMeans
@@ -205,7 +208,8 @@ def run_kmeans(
     # « save »
     paths = make_output_paths(save_dir, tag, n_clusters, del_size, del_pos)
     np.save(paths["centroids"], centroids)
-    np.save(paths["labels"], labels)
+    if save_labels:
+        np.save(paths["labels"], labels)
 
     meta = {
         "calinski_harabasz_score": ch,
@@ -213,11 +217,14 @@ def run_kmeans(
         "data_file": str(data_path),
         "reduction_percent": del_size,
         "cut_position_percent": del_pos,
+        "random_state": random_state,
+        "n_rows": int(len(data)),
+        "labels_saved": save_labels,
         "centroids": centroids.tolist(),
         "start_time": t0.strftime("%Y-%m-%d %H:%M:%S"),
         "duration_s": (datetime.datetime.now() - t0).total_seconds(),
     }
-    paths["meta"].write_text(json.dumps(meta, indent=2))
+    paths["meta"].write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 # ┌──────────────────────────────────────────────────────────────┐
@@ -238,6 +245,8 @@ def main() -> None:
     ap.add_argument("-rs", "--random-state",  type=int, default=0)
     ap.add_argument("-df", "--data-file",     type=Path, required=False)
     ap.add_argument("-sd", "--save-dir",      type=Path, default=Path("."))
+    ap.add_argument("--skip-labels", action="store_true",
+                    help="Do not write the per-row labels (centroids + meta only).")
     ap.add_argument("--print-meta-path", action="store_true",
                     help="Print the meta JSON path and exit (SLURM done-check).")
 
@@ -253,6 +262,7 @@ def main() -> None:
     run_kmeans(
         args.tag, args.n_clusters, args.del_size, args.del_pos,
         args.random_state, args.data_file, args.save_dir,
+        save_labels=not args.skip_labels,
     )
 
 
