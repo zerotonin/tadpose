@@ -25,6 +25,11 @@ from tadpose import sleap_constants as sc
 from tadpose.sleap_features import ROW_KEY
 
 MERGE_COLUMNS: list[str] = [*ROW_KEY, *sc.CLUSTER_FEATURES, "is_usable", "omit_reason"]
+ZSCORED_NAME: str = "features_zscored.npy"
+# The velocity-only feature set: z-scoring is per feature, so these columns
+# of the z-scored matrix equal z-scoring thrust, slip and yaw on their own.
+VELOCITY_ZSCORED_NAME: str = "features_vel_zscored.npy"
+VELOCITY_COLUMNS: slice = slice(0, len(sc.VELOCITY_FEATURES))
 
 # ┌──────────────────────────────────────────────────────────────┐
 # │ Orchestration  « feature tables in, clustering data out »    │
@@ -141,7 +146,8 @@ def save_clustering_data(data: ClusteringData, out_dir: Path, run_info: dict | N
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     np.save(out_dir / "features_raw.npy", data.matrix)
-    np.save(out_dir / "features_zscored.npy", data.zscored)
+    np.save(out_dir / ZSCORED_NAME, data.zscored)
+    np.save(out_dir / VELOCITY_ZSCORED_NAME, np.ascontiguousarray(data.zscored[:, VELOCITY_COLUMNS]))
     data.rows.to_parquet(out_dir / "rows.parquet", index=False)
     data.omitted.to_parquet(out_dir / "omitted_rows.parquet", index=False)
     data.musigma.to_csv(out_dir / "musigma.csv", index=False, encoding="utf-8")
@@ -165,6 +171,14 @@ def save_clustering_data(data: ClusteringData, out_dir: Path, run_info: dict | N
         **(run_info or {}),
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def write_velocity_slice(out_dir: Path) -> Path:
+    """Add ``features_vel_zscored.npy`` to an existing bundle; return its path."""
+    zscored = np.load(Path(out_dir) / ZSCORED_NAME, mmap_mode="r")
+    path = Path(out_dir) / VELOCITY_ZSCORED_NAME
+    np.save(path, np.ascontiguousarray(zscored[:, VELOCITY_COLUMNS]))
+    return path
 
 
 def load_clustering_rows(out_dir: Path) -> pd.DataFrame:

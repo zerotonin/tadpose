@@ -18,7 +18,12 @@ from pathlib import Path
 
 from tadpose import sleap_config as cfg
 from tadpose.sleap_features import load_feature_csv
-from tadpose.sleap_matrix import MERGE_COLUMNS, build_clustering_data, save_clustering_data
+from tadpose.sleap_matrix import (
+    MERGE_COLUMNS,
+    build_clustering_data,
+    save_clustering_data,
+    write_velocity_slice,
+)
 
 log = logging.getLogger("tadpose.sleap_merge")
 
@@ -35,6 +40,9 @@ def main(argv: list[str] | None = None) -> None:
     output_root = args.out_root or cfg.default_output_root()
     features_dir = args.features or output_root / cfg.STAGE2_DIR
     out_dir = args.out or output_root / cfg.STAGE3_DIR
+    if args.add_velocity_slice:
+        log.info("velocity slice written: %s", write_velocity_slice(out_dir))
+        return
     paths = find_feature_csvs(features_dir, args.expect)
     merge_feature_csvs(paths, out_dir)
 
@@ -52,6 +60,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help=f"bundle folder (default: <out-root>/{cfg.STAGE3_DIR})")
     parser.add_argument("--expect", type=int,
                         help="number of videos that must be present (guards against failed tasks)")
+    parser.add_argument("--add-velocity-slice", action="store_true",
+                        help="only add features_vel_zscored.npy to an existing bundle")
     return parser.parse_args(argv)
 
 
