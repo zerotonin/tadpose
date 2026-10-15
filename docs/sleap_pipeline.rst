@@ -45,6 +45,19 @@ Node names are kept exactly as in the SLEAP project:
 * **Thrust, slip and yaw** are measured at the gut.
 
 
+Well scale (``px_per_mm``)
+--------------------------
+
+SLEAP re-tracked the same videos the ring CNN already measured (DB videos
+20 to 31), from a plate crop that was not rescaled: the frons position range of
+the same well agrees within 3 % between the DLC and SLEAP tracks. The ring-CNN
+radius of every well therefore carries over unchanged, and
+:mod:`tadpose.sleap_geometry` turns the existing ``geometry_exp*.json`` into one
+table (``video_name, well, r_px, px_per_mm = 2 r / 15.6``; 6.5 to 7.5 px/mm on
+the Sept-2024 plates). The stored centres are in the old per-well crop frame,
+not plate coordinates; the features need only the scale.
+
+
 Stage 0: raw SLEAP export
 -------------------------
 
@@ -189,7 +202,8 @@ frame was gated, interpolated or eye-copied; the stage-0 chunk with the same
 Measured on the Sept-2024 plates
 --------------------------------
 
-Two videos, provisional scale 7.5 px/mm (before the per-well ring geometry):
+Two videos, provisional scale 7.5 px/mm (run before the ring geometry was wired in;
+the real per-well scale is ~7.0, so speeds there read ~7 % high):
 
 ==================================  ===================  ==================
                                     4-AP, frog D         baseline (no drug)

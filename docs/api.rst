@@ -46,6 +46,9 @@ SLEAP pipeline
 .. automodule:: tadpose.sleap_ingest
    :members:
 
+.. automodule:: tadpose.sleap_geometry
+   :members:
+
 .. automodule:: tadpose.sleap_cleaning
    :members:
 
