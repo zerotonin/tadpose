@@ -97,13 +97,13 @@ BEHAVIOUR_LABELS: dict[str, str] = {
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Prototype naming  « GROUP.index, not arbitrary k-means ids »  │
+# │ Prototype naming  « GROUP.index, not arbitrary k-means ids » │
 # │                                                              │
 # │ The k=36 thesis fit's clusters belong to ten behavioural     │
-# │ groups (thesis Fig 3.13 `cluster_sets`).  Each prototype gets │
-# │ a GROUP.index label (Scheme A), ordered by prevalence so      │
-# │ CSC.1 is the most frequent C-shaped contraction.  Every       │
-# │ plotter labels prototypes via `pm_label()` so the figures     │
+# │ groups (thesis Fig 3.13 `cluster_sets`).  Each prototype gets│
+# │ a GROUP.index label (Scheme A), ordered by prevalence so     │
+# │ CSC.1 is the most frequent C-shaped contraction.  Every      │
+# │ plotter labels prototypes via `pm_label()` so the figures    │
 # │ never show a bare k-means number.                            │
 # └──────────────────────────────────────────────────────────────┘
 
@@ -159,7 +159,7 @@ PM_LABELS: dict[int, str] = _build_pm_labels()
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Kinematics-only k=8 prototypes  « thrust → saccades → rest »  │
+# │ Kinematics-only k=8 prototypes  « thrust → saccades → rest » │
 # └──────────────────────────────────────────────────────────────┘
 # Raw k=8 ids of the velocity-only (kinematics) clustering
 # (sep24_davies_bouldin_velocity, delSize_0; centroids in physical units —
@@ -207,7 +207,7 @@ def pm_category(raw_id: int) -> str:
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Kinematics cross colours  « thrust, slip, yaw arrows »      │
+# │ Kinematics cross colours  « thrust, slip, yaw arrows »       │
 # └──────────────────────────────────────────────────────────────┘
 
 THRUST_COLOUR: str = WONG["vermilion"]
@@ -219,16 +219,54 @@ YAW_COLOUR: str    = WONG["reddish_purple"]
 # │ Posture landmark colours  « consistent across all figures »  │
 # └──────────────────────────────────────────────────────────────┘
 
+# Every landmark maps to a distinct Wong (2011) hue.  frons is drawn as a
+# white ring in the video overlay, so it takes Wong "black" (which reads on
+# white figure backgrounds) and frees the seven visible hues for the seven
+# tracked keypoints.  tail_end gets the brightest hue (yellow) so the fast
+# tail tip stays easiest to follow.
 LANDMARK_COLOURS: dict[str, str] = {
     "left_eye":  WONG["bluish_green"],
     "right_eye": WONG["orange"],
-    "frons":     WONG["blue"],
+    "frons":     WONG["black"],
     "tail_base": WONG["vermilion"],
     "tail_1":    WONG["reddish_purple"],
-    "tail_2":    "#8B4513",               # brown (not in Wong)
-    "tail_3":    "#FF69B4",               # pink  (not in Wong)
-    "tail_end":  "#808080",               # grey
+    "tail_2":    WONG["sky_blue"],
+    "tail_3":    WONG["blue"],
+    "tail_end":  WONG["yellow"],
 }
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Pose overlay  « skeletons drawn on greyscale frames »        │
+# └──────────────────────────────────────────────────────────────┘
+
+# Head → tail spine, drawn as connected segments over the animal.
+SKELETON_EDGES: tuple[tuple[str, str], ...] = (
+    ("frons", "tail_base"),
+    ("tail_base", "tail_1"),
+    ("tail_1", "tail_2"),
+    ("tail_2", "tail_3"),
+    ("tail_3", "tail_end"),
+)
+
+# Overlay drawing defaults.  A black halo (outline) is drawn behind every
+# marker and line so the strong landmark colours stay legible against the
+# grey of the raw tadpole frame.
+OVERLAY_UPSCALE: int = 5          # nearest-neighbour zoom of the raw crop
+OVERLAY_DOT_RADIUS: int = 3       # landmark dot radius (in upscaled px)
+OVERLAY_HALO: int = 2             # black outline thickness around dots
+OVERLAY_SPINE_THICK: int = 1      # thin white spine (kept subtle, not dominant)
+OVERLAY_ARROW_LEN: int = 32       # heading arrow length (in upscaled px)
+OVERLAY_ARROW_THICK: int = 3      # heading arrow line width (the emphasised element)
+RAW_GHOST_BGR: tuple[int, int, int] = (150, 150, 150)  # faint raw detections
+SPIKE_BGR: tuple[int, int, int] = (0, 165, 255)        # orange: interpolated length-spike frame
+
+
+def hex_to_bgr(hex_colour: str) -> tuple[int, int, int]:
+    """Convert a ``#RRGGBB`` string to an OpenCV BGR tuple."""
+    h = hex_colour.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return b, g, r
 
 
 # ┌──────────────────────────────────────────────────────────────┐
