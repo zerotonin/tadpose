@@ -29,14 +29,18 @@ SLEAP_EYES: tuple[str, str] = ("left_eye", "right_eye")
 SLEAP_COORDS: tuple[str, ...] = ("x", "y", "score")
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Body axis + centre of mass  « everything hangs off the gut » │
+# │ Body axes  « posture on the gut, kinematics DLC-style »      │
 # └──────────────────────────────────────────────────────────────┘
 
-# Body axis = frons -> gut.  After alignment centre_y is 0 by construction.
-AXIS_NODE: str = "centre"
-# Thrust, slip and yaw are measured at the gut: the best-tracked node and
-# immune to the eye loss of side-swimming tadpoles.
-COM_NODE: str = "centre"
+# Posture axis = frons -> gut.  After alignment centre_y is 0 by construction.
+POSTURE_AXIS_NODE: str = "centre"
+# Kinematics as in the DLC pipeline, so the runs stay comparable: heading =
+# frons -> tail base; thrust and slip are measured at the mean of both eyes
+# and the tail base.  The three-point mean damps single-node jitter and the
+# long heading axis keeps pixel noise out of yaw.  A lone eye counts twice
+# (stage 1 copies it onto the hidden eye).
+HEADING_NODE: str = "tail1"
+SPEED_POINT_NODES: tuple[str, ...] = ("left_eye", "right_eye", "tail1")
 
 # ┌──────────────────────────────────────────────────────────────┐
 # │ Plate layout  « A1..D6, row-major »                          │

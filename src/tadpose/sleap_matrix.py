@@ -165,8 +165,9 @@ def save_clustering_data(data: ClusteringData, out_dir: Path, run_info: dict | N
             "eye_on_centre_px": sc.EYE_ON_CENTRE_PX,
             "max_segment_factor": sc.MAX_SEGMENT_FACTOR,
             "max_centre_jump_px": sc.MAX_CENTRE_JUMP_PX,
-            "axis_node": sc.AXIS_NODE,
-            "com_node": sc.COM_NODE,
+            "posture_axis_node": sc.POSTURE_AXIS_NODE,
+            "heading_node": sc.HEADING_NODE,
+            "speed_point_nodes": list(sc.SPEED_POINT_NODES),
         },
         **(run_info or {}),
     }
