@@ -26,6 +26,7 @@ re-randomisation statistics.
    usage
    ring_cnn
    sleap_pipeline
+   sweep
    api
 
 Indices

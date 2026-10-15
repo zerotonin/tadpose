@@ -38,6 +38,9 @@ placeholder; override it on submission with
 | `submit_sleap.sh` | SLEAP pipeline: array of per-video tasks + chained merge (run on the login node) | `sbatch` |
 | `sleap_features.sh` | One SLEAP video, stages 0 -> 2 (array task) | `tadpose sleap-features --slurm-array` |
 | `sleap_matrix.sh` | Stage 3 clustering bundle, after all tasks succeed | `tadpose sleap-matrix --expect N` |
+| `submit_sweep.sh` | k-means stability sweep: GPU workers, or the k-selection afterwards (login node) | `sbatch` |
+| `sweep_worker.sh` | One GPU worker: detect the card, pack fits, drain the shared pool | `tadpose sweep work` |
+| `kselect.sh` | k-selection tables + agreement figure for every feature set | `tadpose kselect` |
 | `load_paths.sh` | Export the `hpc` profile as `TADPOSE_*` vars | `python -m tadpose.config --export` |
 
 The clustering scripts check whether a `(k, del_size, del_pos)` combination
@@ -83,3 +86,24 @@ the 12 Sept-2024 plates (64 GB requested).  A task skips a video whose
 stage-1 and stage-2 CSVs exist, outputs appear only once fully written, and
 the merge refuses to run unless all N feature CSVs are present.  Logs go to
 `<sleap_output_root>/logs/`.
+
+## k-means stability sweep
+
+Design and grid: `docs/sweep.rst`.  Extra `hpc` profile keys: `gpu_partitions`
+(comma-separated), `conda_sh` (path to `conda.sh`), `rapids_env` (the conda env
+with cuML).
+
+```bash
+# once, on the login node
+tadpose sweep init --sweep-dir <sweep> --tag-prefix sleap2026 \
+    --feature-set pdv=<bundle>/features_zscored.npy \
+    --feature-set vel=<bundle>/features_vel_zscored.npy
+
+bash slurm/submit_sweep.sh workers <sweep> 12                     # default GPU partitions
+bash slurm/submit_sweep.sh workers <sweep> 4 --partition=aoraki_gpu_H200 --qos=h200_advanced
+tadpose sweep status --sweep-dir <sweep>                           # done / claimed / parked
+bash slurm/submit_sweep.sh kselect <sweep>                         # when remaining=0
+```
+
+Workers are requeue-safe and can be added at any time; a killed worker's claims
+go stale after five minutes and are taken over.  Logs: `<sweep>/logs/`.

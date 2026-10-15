@@ -166,6 +166,7 @@ file                      content
 ========================  ==============================================================
 ``features_raw.npy``      (N × 16) float32, physical units
 ``features_zscored.npy``  (N × 16) float32, ``(x − mu) / sigma``: the k-means input
+``features_vel_zscored``  (N × 3) the velocity-only feature set (first three columns)
 ``rows.parquet``          row *i* of both matrices: ``video_stem, well, well_number,
                           slot, frame, raw_frame, time_s``
 ``omitted_rows.parquet``  every stage-2 row left out, same keys + ``omit_reason``
@@ -199,7 +200,8 @@ Output layout under the output root:
 
    stage1_interpolated/<video>_interpolated.csv
    stage2_features/<video>_features.csv
-   clustering/        features_raw.npy, features_zscored.npy, rows.parquet,
+   clustering/        features_raw.npy, features_zscored.npy,
+                      features_vel_zscored.npy, rows.parquet,
                       omitted_rows.parquet, musigma.csv, omission_summary.csv,
                       manifest.json (includes code version + git commit)
    logs/              SLURM task and merge logs

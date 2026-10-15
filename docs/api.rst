@@ -73,6 +73,18 @@ Clustering
 .. automodule:: tadpose.clustering
    :members:
 
+.. automodule:: tadpose.sweep_constants
+   :members:
+
+.. automodule:: tadpose.sweep
+   :members:
+
+.. automodule:: tadpose.kselect
+   :members:
+
+.. automodule:: tadpose.kselect_plot
+   :members:
+
 .. automodule:: tadpose.cluster_meta
    :members:
 
