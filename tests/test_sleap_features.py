@@ -27,7 +27,8 @@ from tadpose.sleap_features import (
 
 N = 60
 PX_PER_MM = 8.0
-LEFT, RIGHT, TAIL_TIP = (SLEAP_NODES.index(n) for n in ("left_eye", "right_eye", "tail_tip"))
+LEFT, RIGHT, CENTRE, TAIL1, TAIL_TIP = (
+    SLEAP_NODES.index(n) for n in ("left_eye", "right_eye", "centre", "tail1", "tail_tip"))
 
 
 def _features(xy: np.ndarray, **kw) -> "object":
@@ -61,6 +62,24 @@ def test_yaw_has_no_wraparound_spike() -> None:
     features = _features(straight_tadpole_xy(frons, heading))
     usable = features[features.is_usable]
     np.testing.assert_allclose(usable.yaw_rad_s, 0.02 * NOMINAL_FPS)
+
+
+def test_kinematics_ignore_a_wiggling_gut() -> None:
+    """Heading runs frons -> tail base and the speed point skips the gut (DLC style)."""
+    frons = np.tile([200.0, 100.0], (N, 1))
+    xy = straight_tadpole_xy(frons, np.zeros(N))
+    xy[:, CENTRE, 1] += 3.0 * np.sin(np.arange(N))       # gut swings sideways
+    usable = _features(xy)[lambda f: f.is_usable]
+    for column in ("thrust_mm_s", "slip_mm_s", "yaw_rad_s"):
+        np.testing.assert_allclose(usable[column], 0.0, atol=1e-9)
+
+
+def test_speed_point_is_the_eye_and_tail_base_mean() -> None:
+    frons = np.column_stack([200 + np.arange(N), 150 + 0.5 * np.arange(N)])
+    xy = straight_tadpole_xy(frons, np.full(N, 0.7))
+    features = _features(xy)
+    expected = xy[:, [LEFT, RIGHT, TAIL1]].mean(axis=1)
+    np.testing.assert_allclose(features[["speed_point_x_px", "speed_point_y_px"]], expected)
 
 
 def test_posture_is_aligned_gut_on_positive_x() -> None:
