@@ -26,7 +26,10 @@
       "sleap_predictions_root": "/path/to/cluster/tadpole_project/video_data/sleap_2026/sept2024_pharmacology",
       "sleap_geometry_csv": "/path/to/cluster/tadpole_project/video_data/sleap_2026/ring_geometry/sleap_well_geometry.csv",
       "sleap_output_root": "/path/to/cluster/tadpole_project/results/sleap_2026",
-      "cpu_partition": "<your-cpu-slurm-partition>"
+      "cpu_partition": "<your-cpu-slurm-partition>",
+      "gpu_partitions": "<comma-separated GPU partitions>",
+      "conda_sh": "/path/to/conda/etc/profile.d/conda.sh",
+      "rapids_env": "<conda env with RAPIDS cuML>"
     }
   }
 }
