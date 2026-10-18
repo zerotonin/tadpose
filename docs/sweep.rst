@@ -102,6 +102,8 @@ Once ``tadpose sweep status`` reports ``remaining=0``:
 .. code-block:: bash
 
    bash slurm/submit_sweep.sh kselect <sweep>
+   # its monitor: stage per feature set, k done, ETA
+   ssh -t <cluster> 'watch -n 60 <checkout>/slurm/kselect_watch.sh <sweep>'
    # or one feature set locally:
    tadpose kselect --sweep-dir <sweep> --feature-set pdv
 

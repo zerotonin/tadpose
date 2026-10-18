@@ -42,6 +42,7 @@ placeholder; override it on submission with
 | `sweep_worker.sh` | One GPU worker: detect the card, pack fits, drain the shared pool | `tadpose sweep work` |
 | `kselect.sh` | k-selection tables + agreement figure for every feature set | `tadpose kselect` |
 | `sweep_watch.sh` | One-screen sweep monitor: progress per delSize, claims, parked fits, cards, trailing-hour ETA (login node, under `watch`) | `find`, `squeue`, `sacct` |
+| `kselect_watch.sh` | One-screen k-selection monitor: stage per feature set, k done, ETA, last log lines (login node, under `watch`) | `wc`, `squeue`, `sacct` |
 | `load_paths.sh` | Export the `hpc` profile as `TADPOSE_*` vars | `python -m tadpose.config --export` |
 
 The clustering scripts check whether a `(k, del_size, del_pos)` combination
@@ -104,6 +105,7 @@ bash slurm/submit_sweep.sh workers <sweep> 12                     # spread over 
 bash slurm/submit_sweep.sh workers <sweep> 4 --partition=<partition> --qos=<granted qos>
 tadpose sweep status --sweep-dir <sweep>                           # done / claimed / parked
 bash slurm/submit_sweep.sh kselect <sweep>                         # when remaining=0
+watch -n 60 slurm/kselect_watch.sh <sweep>                         # its progress
 ```
 
 Without `--partition`, the workers are spread over `gpu_partitions`: each
