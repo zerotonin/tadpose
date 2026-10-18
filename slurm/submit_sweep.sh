@@ -10,7 +10,12 @@
 #
 #  Workers (each drains the shared pool; add more at any time):
 #      bash slurm/submit_sweep.sh workers DIR 12
-#      bash slurm/submit_sweep.sh workers DIR 4 --partition=aoraki_gpu_H200 --qos=h200_advanced
+#      bash slurm/submit_sweep.sh workers DIR 4 --partition=<gpu partition> --qos=<granted qos>
+#  Without --partition the N workers are spread over gpu_partitions, no
+#  more per partition than its QOS allows per user, each with --mem
+#  clipped to the partition's per-job cap: a multi-partition array
+#  stalls on QOSMaxJobsPerUserLimit once its first partition is full,
+#  and a small-card partition rejects the default 90G outright.
 #  k-selection, once `tadpose sweep status` reports remaining=0:
 #      bash slurm/submit_sweep.sh kselect DIR
 #
@@ -48,20 +53,70 @@ mkdir -p "${LOG_DIR}"
 ACCOUNT_FLAG=()
 if [[ -n "${TADPOSE_ACCOUNT:-}" ]]; then ACCOUNT_FLAG=(--account="${TADPOSE_ACCOUNT}"); fi
 
+WORKER_MEM_G=90                          # = sweep_worker.sh --mem
+MEM_HEADROOM_G=4
+
+submit_workers() {
+    local n="$1"; shift
+    local job
+    job=$(sbatch --parsable ${ACCOUNT_FLAG[@]+"${ACCOUNT_FLAG[@]}"} \
+        --array="1-${n}" \
+        --output="${LOG_DIR}/worker_%A_%a.out" \
+        --error="${LOG_DIR}/worker_%A_%a.err" \
+        "$@" \
+        "${TADPOSE_REPO}/slurm/sweep_worker.sh" "${SWEEP_DIR}")
+    echo "Submitted ${n} sweep worker(s) as array ${job}  $*"
+}
+
+# Per-user job cap and per-job memory cap (GB) of a partition's QOS;
+# "- -" when the partition has no QOS or no such limit.
+read_partition_limits() {
+    local qos tres jobs mem
+    qos=$(scontrol show partition "$1" | grep -o 'QoS=[^ ]*' | cut -d= -f2)
+    if [[ -z "${qos}" || "${qos}" == "N/A" ]]; then echo "- -"; return; fi
+    IFS='|' read -r tres jobs < <(sacctmgr -n -P show qos "${qos}" format=maxtres,maxjobspu)
+    mem=$(grep -o 'mem=[0-9]*[MGT]' <<< "${tres}" | cut -d= -f2)
+    case "${mem}" in
+        *T) mem=$(( ${mem%T} * 1024 )) ;;
+        *G) mem=${mem%G} ;;
+        *M) mem=$(( ${mem%M} / 1024 )) ;;
+        *)  mem="-" ;;
+    esac
+    echo "${jobs:--} ${mem}"
+}
+
+spread_workers() {
+    local left="$1"; shift
+    local part jobs mem n mem_flag
+    IFS=, read -ra parts <<< "${TADPOSE_GPU_PARTITIONS}"
+    for part in "${parts[@]}"; do
+        [[ "${left}" -le 0 ]] && break
+        read -r jobs mem < <(read_partition_limits "${part}")
+        n=${left}
+        if [[ "${jobs}" != "-" && "${jobs}" -lt "${n}" ]]; then n=${jobs}; fi
+        mem_flag=()
+        if [[ "${mem}" != "-" && "${mem}" -lt "${WORKER_MEM_G}" ]]; then
+            mem_flag=(--mem="$(( mem - MEM_HEADROOM_G ))G")
+        fi
+        submit_workers "${n}" --partition="${part}" ${mem_flag[@]+"${mem_flag[@]}"} "$@"
+        left=$(( left - n ))
+    done
+    if [[ "${left}" -gt 0 ]]; then
+        echo "submit_sweep.sh: ${left} worker(s) not placed; the partitions' per-user caps are full" >&2
+    fi
+}
+
 case "${MODE}" in
     workers)
         N_WORKERS="${3:?number of workers required}"
         shift 3
         require TADPOSE_GPU_PARTITIONS TADPOSE_CONDA_SH TADPOSE_RAPIDS_ENV
         "${TADPOSE_PYTHON_INTERPRETER:-python}" -m tadpose.cli sweep status --sweep-dir "${SWEEP_DIR}"
-        JOB=$(sbatch --parsable \
-            --partition="${TADPOSE_GPU_PARTITIONS}" ${ACCOUNT_FLAG[@]+"${ACCOUNT_FLAG[@]}"} \
-            --array="1-${N_WORKERS}" \
-            --output="${LOG_DIR}/worker_%A_%a.out" \
-            --error="${LOG_DIR}/worker_%A_%a.err" \
-            "$@" \
-            "${TADPOSE_REPO}/slurm/sweep_worker.sh" "${SWEEP_DIR}")
-        echo "Submitted ${N_WORKERS} sweep worker(s) as array ${JOB}.  Logs: ${LOG_DIR}"
+        if [[ " $* " == *" --partition="* || " $* " == *" -p "* ]]; then
+            submit_workers "${N_WORKERS}" "$@"
+        else
+            spread_workers "${N_WORKERS}" "$@"
+        fi
         echo "Progress: tadpose sweep status --sweep-dir ${SWEEP_DIR}"
         ;;
     kselect)

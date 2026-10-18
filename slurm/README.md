@@ -100,11 +100,17 @@ tadpose sweep init --sweep-dir <sweep> --tag-prefix sleap2026 \
     --feature-set pdv=<bundle>/features_zscored.npy \
     --feature-set vel=<bundle>/features_vel_zscored.npy
 
-bash slurm/submit_sweep.sh workers <sweep> 12                     # default GPU partitions
-bash slurm/submit_sweep.sh workers <sweep> 4 --partition=aoraki_gpu_H200 --qos=h200_advanced
+bash slurm/submit_sweep.sh workers <sweep> 12                     # spread over gpu_partitions
+bash slurm/submit_sweep.sh workers <sweep> 4 --partition=<partition> --qos=<granted qos>
 tadpose sweep status --sweep-dir <sweep>                           # done / claimed / parked
 bash slurm/submit_sweep.sh kselect <sweep>                         # when remaining=0
 ```
+
+Without `--partition`, the workers are spread over `gpu_partitions`: each
+partition gets at most its QOS per-user job cap, and `--mem` is clipped to its
+per-job memory cap (both read from `sacctmgr` at submit time).  A single array
+over all partitions stalls with `QOSMaxJobsPerUserLimit` as soon as the first
+partition is full, and small-card partitions reject the 90 GB default.
 
 Workers are requeue-safe and can be added at any time; a killed worker's claims
 go stale after five minutes and are taken over.  Logs: `<sweep>/logs/`.
