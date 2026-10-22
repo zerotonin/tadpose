@@ -189,13 +189,11 @@ def claim(run: SweepRun, spec: FitSpec) -> Path | None:
     if is_done(run, spec) or (run.sweep_dir / FAILED_DIR / f"{name}.parked").exists():
         return None
     claim_path = run.sweep_dir / CLAIMS_DIR / f"{name}.claim"
-    if claim_path.exists():
-        if time.time() - claim_path.stat().st_mtime < sc.STALE_S:
+    age = compute_claim_age(claim_path)
+    if age is not None:
+        if age < sc.STALE_S:
             return None                                   # a live worker owns it
-        try:
-            claim_path.unlink()                           # stale: reclaim
-        except FileNotFoundError:
-            pass
+        claim_path.unlink(missing_ok=True)                # stale: reclaim
     try:
         fd = os.open(claim_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
@@ -203,6 +201,18 @@ def claim(run: SweepRun, spec: FitSpec) -> Path | None:
     os.write(fd, f"{os.uname().nodename}:{os.getpid()}".encode())
     os.close(fd)
     return claim_path
+
+
+def compute_claim_age(claim_path: Path) -> float | None:
+    """Seconds since the claim's last heartbeat; None if there is no claim.
+
+    One ``stat`` call: the owner may release the claim between an
+    ``exists()`` check and a second ``stat``.
+    """
+    try:
+        return time.time() - claim_path.stat().st_mtime
+    except FileNotFoundError:
+        return None
 
 
 def release(run: SweepRun, spec: FitSpec, claim_path: Path, ok: bool) -> None:
