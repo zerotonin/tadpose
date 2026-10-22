@@ -17,10 +17,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tadpose.sleap_cleaning import LEFT, RIGHT, CleanedTrack
+from tadpose.sleap_cleaning import LEFT, RIGHT, CleanedTrack, find_eye_switches
 from tadpose.sleap_constants import (
     HEADING_NODE,
     OMIT_DROPPED,
+    OMIT_EYE_SWITCH,
     OMIT_MISSING_NODE,
     OMIT_NO_EYES,
     OMIT_NO_PREVIOUS,
@@ -80,7 +81,7 @@ def compute_track_features(cleaned: CleanedTrack, px_per_mm: float) -> pd.DataFr
     frons = compute_frons(xy)
     speed_point = compute_speed_point(xy)
     reason = compute_omit_reasons(cleaned, frons)
-    has_posture = np.isin(reason, ["", OMIT_NO_PREVIOUS])
+    has_posture = np.isin(reason, ["", OMIT_NO_PREVIOUS, OMIT_EYE_SWITCH])
     is_usable = reason == ""
 
     heading = compute_body_angle(frons, xy[:, HEADING])
@@ -122,7 +123,9 @@ def compute_omit_reasons(cleaned: CleanedTrack, frons: np.ndarray) -> np.ndarray
     """Per-slot reason the row carries no features (``""`` = usable).
 
     Checked in order: camera-dropped slot, no eye at all, a gut/tail node
-    still missing after gap filling, previous slot unusable (no diff).
+    still missing after gap filling, previous slot unusable (no diff), an
+    unanchored eye switch (the diff is a frons jump, not movement; the row
+    keeps its posture).
     """
     n = len(cleaned.xy)
     reason = np.full(n, "", dtype=object)
@@ -134,8 +137,11 @@ def compute_omit_reasons(cleaned: CleanedTrack, frons: np.ndarray) -> np.ndarray
     has_posture = ~(is_dropped | no_eyes | missing_node)
     no_previous = ~np.concatenate([[False], has_posture[:-1]])
 
-    for mask, label in ((no_previous, OMIT_NO_PREVIOUS), (missing_node, OMIT_MISSING_NODE),
-                        (no_eyes, OMIT_NO_EYES), (is_dropped, OMIT_DROPPED)):
+    eye_switch = find_eye_switches(cleaned.state[:, [LEFT, RIGHT]])
+
+    for mask, label in ((eye_switch, OMIT_EYE_SWITCH), (no_previous, OMIT_NO_PREVIOUS),
+                        (missing_node, OMIT_MISSING_NODE), (no_eyes, OMIT_NO_EYES),
+                        (is_dropped, OMIT_DROPPED)):
         reason[mask] = label
     return reason
 
@@ -146,7 +152,7 @@ def compute_omit_reasons(cleaned: CleanedTrack, frons: np.ndarray) -> np.ndarray
 
 
 def compute_frons(xy: np.ndarray) -> np.ndarray:
-    """Eye midpoint.  After the stage-1 eye copy a lone eye IS the frons."""
+    """Eye midpoint.  Where stage 1 put the hidden eye on the visible one, that eye IS the frons."""
     return 0.5 * (xy[:, LEFT] + xy[:, RIGHT])
 
 
