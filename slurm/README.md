@@ -44,6 +44,9 @@ placeholder; override it on submission with
 | `kselect.sh` | k-selection tables + agreement figure for every feature set | `tadpose kselect` |
 | `sweep_watch.sh` | One-screen sweep monitor: progress per delSize, claims, parked fits, cards, trailing-hour ETA (login node, under `watch`) | `find`, `squeue`, `sacct` |
 | `kselect_watch.sh` | One-screen k-selection monitor: stage per feature set, k done, ETA, last log lines (login node, under `watch`) | `wc`, `squeue`, `sacct` |
+| `submit_moseq.sh` | keypoint-MoSeq chain: export array, fit-set draw, PCA, kappa scan; full-model calibration and fit (login node) | `sbatch` |
+| `moseq_export.sh` | One stage-1 video to observed-only keypoints, or the fit-set draw (array task) | `tadpose moseq-export` |
+| `moseq_fit.sh` | One keypoint-MoSeq step on a GPU, in the kpms conda env | `tadpose moseq-fit` |
 | `load_paths.sh` | Export the `hpc` profile as `TADPOSE_*` vars | `python -m tadpose.config --export` |
 
 The clustering scripts check whether a `(k, del_size, del_pos)` combination
@@ -118,3 +121,19 @@ partition is full, and small-card partitions reject the 90 GB default.
 
 Workers are requeue-safe and can be added at any time; a killed worker's claims
 go stale after five minutes and are taken over.  Logs: `<sweep>/logs/`.
+
+## keypoint-MoSeq
+
+Design: `docs/moseq.rst`.  Extra `hpc` profile keys: `moseq_env` (conda env with
+keypoint-moseq), `moseq_gpu_partition`, and `moseq_gpu_qos` if that partition
+demands a QOS.  Needs the stage-1 CSVs of a finished SLEAP run.
+
+```bash
+bash slurm/submit_moseq.sh                 # export -> fit sets -> PCA -> kappa scan (fit set 0)
+bash slurm/submit_moseq.sh --export-only   # CPU steps only
+bash slurm/submit_moseq.sh --from-pca 1    # PCA + scan on the second draw
+bash slurm/submit_moseq.sh --calibrate 0 4e6       # full model at 4e6 x FULL_KAPPA_FACTORS
+bash slurm/submit_moseq.sh --full 0 4e6 4e5        # final full-model fit
+```
+
+Outputs go to `<sleap_output_root>/moseq/` (`export/`, `fit_sets/`, `projects/`, `logs/`).

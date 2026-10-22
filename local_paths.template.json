@@ -29,7 +29,10 @@
       "cpu_partition": "<your-cpu-slurm-partition>",
       "gpu_partitions": "<comma-separated GPU partitions>",
       "conda_sh": "/path/to/conda/etc/profile.d/conda.sh",
-      "rapids_env": "<conda env with RAPIDS cuML>"
+      "rapids_env": "<conda env with RAPIDS cuML>",
+      "moseq_env": "<conda env with keypoint-moseq (JAX + CUDA 12)>",
+      "moseq_gpu_partition": "<GPU partition for keypoint-MoSeq, large card>",
+      "moseq_gpu_qos": "<QOS that partition demands, or empty>"
     }
   }
 }
