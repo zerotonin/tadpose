@@ -19,7 +19,7 @@ Overview
       │       sleap_ingest            join chunks, uniform time grid, one track per well
       ▼
    stage 1  interpolated CSV          <video>_interpolated.csv          sleap_cleaning
-      │       gate bad nodes, copy the hidden eye, fill short gut/tail gaps
+      │       gate bad nodes, fill short gut/tail gaps, place the hidden eye
       ▼
    stage 2  feature CSV               <video>_features.csv              sleap_features
       │       frons, thrust/slip/yaw, aligned posture, per-frame diffs; NaN + omit_reason
@@ -39,8 +39,9 @@ Node names are kept exactly as in the SLEAP project:
 ``left_eye, right_eye, centre, tail1, tail2, tail3, tail_tip``.
 
 * ``centre`` is the **gut**, not the tail base; ``tail1`` is the tail base.
-* **Frons** = midpoint of the two eyes. If only one eye is visible, that eye is
-  the frons (a side-swimming tadpole hides one eye directly below the other).
+* **Frons** = midpoint of the two eyes. If only one eye is visible, stage 1
+  places the other (see below); in a long side-lying stretch the hidden eye
+  lies directly below the visible one, so the visible eye is the frons.
 * **Posture axis** = gut → frons (``posture_angle_rad``); the aligned posture puts
   the gut on +x, so ``centre_y`` is 0.
 * **Kinematics are DLC-style**, so the SLEAP and DLC runs measure the same thing:
@@ -104,10 +105,29 @@ all 24 wells. :mod:`tadpose.sleap_cleaning` then applies, in this order:
                              back out: the whole frame is rejected
    ========================  ==========================================================
 
-2. **Hidden eye**: if exactly one eye is valid, the other takes its x/y.
-3. **Gap filling**: gaps in ``centre`` and the tail nodes are filled linearly if
+2. **Gap filling**: gaps in ``centre`` and the tail nodes are filled linearly if
    they are at most ``MAX_INTERP_FRAMES`` (25 slots = 0.5 s) long, bounded by
    valid values on both sides, and contain no camera-dropped slot.
+3. **Hidden eye**: if exactly one eye is valid, the other is placed from its
+   offset to the visible eye in the body frame (gut → tail base, which never
+   depends on the eyes):
+
+   * a stretch of at most ``MAX_EYE_INTERP_FRAMES`` (10 slots = 200 ms) with
+     both eyes seen on either side is SLEAP losing an eye: the offset is
+     interpolated between the two sides (state ``4``);
+   * a longer stretch is the animal on its side: the hidden eye sits on the
+     visible one (state ``2``), reached over ``EYE_RAMP_FRAMES`` (5) slots from
+     each side where both eyes were seen (state ``4``);
+   * a side without both eyes seen (track start, an eye swap) anchors nothing;
+     the eye is copied up to it and stage 2 drops the diff across it
+     (``eye_switch``).
+
+   An earlier version copied the visible eye onto the hidden one on every
+   lone-eye slot. On the Sept-2024 plates the median lone-eye stretch is
+   2 slots and the eyes are still 0.73 × their normal spacing apart just
+   before it, so the copy threw the frons 4.5 px (mean; 0.7 px on normal
+   frames) in one frame. That faked yaw and slip spikes and produced
+   k-means prototypes made mostly of switch frames.
 
 **Never filled:** frames with **both eyes missing** (no frons, so no posture),
 and **camera-dropped slots**. They stay NaN.
@@ -120,7 +140,7 @@ Columns of ``<video>_interpolated.csv`` (one row per well and slot):
   score), ``<node>_state``, ``<node>_gated``
 
 ``<node>_state`` codes: ``0`` observed · ``1`` interpolated · ``2`` eye copied
-from the other eye · ``3`` missing. ``<node>_gated`` is ``True`` where a gate
+from the other eye · ``3`` missing · ``4`` eye placed from the eye spacing. ``<node>_gated`` is ``True`` where a gate
 rejected the raw reading (its value may since have been interpolated).
 ``raw_frame = frame + skip_start_frames`` is the frame index in the cropped video
 (the older recordings dropped 10 frames before tracking).
@@ -156,6 +176,8 @@ A row that cannot carry features keeps NaN features and an ``omit_reason``
 ``no_eyes``             both eyes missing: no frons                         NaN / NaN
 ``missing_node``        a gut/tail node gap too long to fill                NaN / NaN
 ``no_previous``         previous slot unusable, so no diff or speed         valid / NaN
+``eye_switch``          an eye switches between seen and placed with no     valid / NaN
+                        anchor: the diff is a frons jump, not movement
 (empty)                 usable                                              valid / valid
 ======================  ==================================================  ==========================
 
@@ -183,7 +205,20 @@ file                      content
                           (population sigma); reused unchanged on new data (genes)
 ``omission_summary.csv``  per video and well: kept rows, omitted rows per reason
 ``manifest.json``         counts, feature order, videos, cleaning parameters
+``runs.parquet``          gap-free runs per animal (``tadpose sequences``): ``video_stem,
+                          well, start_row, stop_row, first_slot, n_frames``
+``eye_switch_mask.npy``   (N,) bool: the row's diff spans an unanchored eye switch
 ========================  ==============================================================
+
+**Runs and eye-copy switches.** ``tadpose sequences`` (run after the merge)
+splits the bundle into runs of consecutive frame slots per animal; a temporal
+model (syllables, Markov states) must never link two frames across an omitted
+slot. It also flags every row whose diff spans an unanchored eye switch (the
+rule stage 2 uses for ``eye_switch``). On a bundle from the current stage 1 the
+mask is therefore all False, a check; on bundles from the earlier eye copy
+0.2-6 % of rows were switch rows, most of them in 4-AP and PTZ videos, and on
+those rows the eye diffs and the frons-based heading and speed point jumped by
+half the eye spacing in one frame without the animal moving.
 
 
 Running it
@@ -198,11 +233,13 @@ Locally, with explicit paths (or the ``local`` profile keys
    tadpose sleap-features --all  --predictions <predictions folder> \
        --geometry <sleap_well_geometry.csv> --out <output root>
    tadpose sleap-matrix --out-root <output root> --expect 12
+   tadpose sequences --out-root <output root>
 
 The start-frame trim of each video is read from Caroline's ``batch_log.txt``
 (``skip_frames=``); without that log ``--skip-start-frames`` must be given.
 On the cluster, ``bash slurm/submit_sleap.sh`` runs one array task per video
-and chains the merge after all of them succeed (see ``slurm/README.md``).
+and chains the merge and ``sequences`` after all of them succeed (see
+``slurm/README.md``).
 Output layout under the output root:
 
 .. code-block:: text
@@ -235,7 +272,7 @@ label *i* belongs to ``rows.parquet`` row *i*:
    # cropped plate video; hit.slot finds the row in both stage CSVs.
 
 The stage-1 row (same ``video_stem, well, slot``) shows whether any node of that
-frame was gated, interpolated or eye-copied; the stage-0 chunk with the same
+frame was gated, interpolated or had its eye placed; the stage-0 chunk with the same
 ``frame`` shows the untouched SLEAP output.
 
 
