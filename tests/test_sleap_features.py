@@ -12,6 +12,7 @@ from tadpose.sleap_cleaning import clean_track
 from tadpose.sleap_constants import (
     NOMINAL_FPS,
     OMIT_DROPPED,
+    OMIT_EYE_SWITCH,
     OMIT_MISSING_NODE,
     OMIT_NO_EYES,
     OMIT_NO_PREVIOUS,
@@ -94,14 +95,26 @@ def test_posture_is_aligned_gut_on_positive_x() -> None:
     assert "centre_y_mm" not in features
 
 
-def test_lone_eye_is_the_frons() -> None:
+def test_side_lying_eye_is_the_frons() -> None:
     frons = np.tile([200.0, 100.0], (N, 1))
     xy = straight_tadpole_xy(frons, np.zeros(N))
-    xy[20, RIGHT] = np.nan
+    xy[10:40, RIGHT] = np.nan
     features = _features(xy)
-    assert features.loc[20, "frons_x_px"] == pytest.approx(xy[20, LEFT, 0])
-    assert features.loc[20, "frons_y_px"] == pytest.approx(xy[20, LEFT, 1])
-    assert features.loc[20, "is_usable"]
+    assert features.loc[25, "frons_x_px"] == pytest.approx(xy[25, LEFT, 0])
+    assert features.loc[25, "frons_y_px"] == pytest.approx(xy[25, LEFT, 1])
+    assert features.loc[10:40, "is_usable"].all()
+
+
+def test_unanchored_eye_switch_drops_only_the_diff() -> None:
+    frons = np.tile([200.0, 100.0], (N, 1))
+    xy = straight_tadpole_xy(frons, np.zeros(N))
+    xy[20:25, LEFT] = np.nan
+    xy[25:30, RIGHT] = np.nan
+    features = _features(xy)
+    assert features.loc[25, "omit_reason"] == OMIT_EYE_SWITCH
+    assert np.isnan(features.loc[25, "thrust_mm_s"])
+    assert np.isfinite(features.loc[25, "centre_x_mm"])
+    assert features.loc[26, "is_usable"]
 
 
 def test_omit_reasons_and_nan_features() -> None:
