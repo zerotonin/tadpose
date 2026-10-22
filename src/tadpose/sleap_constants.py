@@ -38,7 +38,7 @@ POSTURE_AXIS_NODE: str = "centre"
 # frons -> tail base; thrust and slip are measured at the mean of both eyes
 # and the tail base.  The three-point mean damps single-node jitter and the
 # long heading axis keeps pixel noise out of yaw.  A lone eye counts twice
-# (stage 1 copies it onto the hidden eye).
+# where stage 1 places the hidden eye on it (long side-lying stretches).
 HEADING_NODE: str = "tail1"
 SPEED_POINT_NODES: tuple[str, ...] = ("left_eye", "right_eye", "tail1")
 
@@ -81,6 +81,21 @@ MAX_SEGMENT_FACTOR: float = 2.0
 MAX_CENTRE_JUMP_PX: float = 30.0
 
 # ┌──────────────────────────────────────────────────────────────┐
+# │ Hidden eye  « bridge short losses, ramp long ones »          │
+# └──────────────────────────────────────────────────────────────┘
+
+# A lone-eye stretch this short is SLEAP losing an eye, not the animal lying
+# on its side: on the Sept-2024 plates the median stretch is 2 slots and the
+# eyes are still 0.73 x their normal spacing apart just before it.  The
+# hidden eye is interpolated in the body frame (gut -> tail base) across it.
+# 10 slots = 200 ms covers 80 % of the stretches.
+MAX_EYE_INTERP_FRAMES: int = 10
+# A longer stretch is the animal on its side: the hidden eye lies under the
+# visible one.  It slides there (and back out) over this many slots at each
+# end, because a roll takes time and an instant copy throws the frons ~4 px.
+EYE_RAMP_FRAMES: int = 5
+
+# ┌──────────────────────────────────────────────────────────────┐
 # │ Node states + omit reasons  « the audit trail »              │
 # └──────────────────────────────────────────────────────────────┘
 
@@ -89,14 +104,16 @@ STATE_OBSERVED: int = 0
 STATE_INTERPOLATED: int = 1
 STATE_EYE_COPIED: int = 2          # hidden eye given the visible eye's x/y
 STATE_MISSING: int = 3
+STATE_EYE_INTERPOLATED: int = 4    # hidden eye placed from the seen eye spacing
 
 # Why a stage-2 row carries no features, checked in this order.
 OMIT_DROPPED: str = "camera_dropped"      # no video frame behind the slot
 OMIT_NO_EYES: str = "no_eyes"             # both eyes missing: no frons
 OMIT_MISSING_NODE: str = "missing_node"   # gut/tail gap too long to fill
 OMIT_NO_PREVIOUS: str = "no_previous"     # previous slot unusable: no diff
+OMIT_EYE_SWITCH: str = "eye_switch"       # unanchored eye switch: the frons jumps
 OMIT_REASONS: tuple[str, ...] = (
-    OMIT_DROPPED, OMIT_NO_EYES, OMIT_MISSING_NODE, OMIT_NO_PREVIOUS,
+    OMIT_DROPPED, OMIT_NO_EYES, OMIT_MISSING_NODE, OMIT_NO_PREVIOUS, OMIT_EYE_SWITCH,
 )
 
 # ┌──────────────────────────────────────────────────────────────┐

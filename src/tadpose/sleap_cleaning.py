@@ -1,12 +1,14 @@
 # ╔══════════════════════════════════════════════════════════════════╗
 # ║  TadPose — sleap_cleaning                                        ║
-# ║  « stage 1: gate bad nodes, copy the hidden eye, fill gaps »     ║
+# ║  « stage 1: gate bad nodes, fill gaps, place the hidden eye »    ║
 # ╠══════════════════════════════════════════════════════════════════╣
 # ║  Turns a gridded WellTrack into the cleaned ('interpolated')     ║
-# ║  track: rejects implausible node readings, gives a hidden eye    ║
-# ║  the visible eye's position, and linearly fills short gaps in    ║
-# ║  the gut and tail nodes.  Every node carries a state code so     ║
-# ║  each value can be traced back to the raw SLEAP export.          ║
+# ║  track: rejects implausible node readings, linearly fills short  ║
+# ║  gaps in the gut and tail nodes, then places a hidden eye: across ║
+# ║  a short loss it is interpolated in the body frame, in a long    ║
+# ║  side-lying stretch it slides onto the visible eye.  Every node  ║
+# ║  carries a state code so each value can be traced back to the    ║
+# ║  raw SLEAP export.                                               ║
 # ║                                                                  ║
 # ║  Never filled: both eyes missing, or a camera-dropped slot.      ║
 # ╚══════════════════════════════════════════════════════════════════╝
@@ -22,21 +24,27 @@ import pandas as pd
 
 from tadpose.sleap_constants import (
     EYE_ON_CENTRE_PX,
+    EYE_RAMP_FRAMES,
     MAX_CENTRE_JUMP_PX,
+    MAX_EYE_INTERP_FRAMES,
     MAX_INTERP_FRAMES,
     MAX_SEGMENT_FACTOR,
     MIN_NODE_SCORE,
     SLEAP_NODES,
     STATE_EYE_COPIED,
+    STATE_EYE_INTERPOLATED,
     STATE_INTERPOLATED,
     STATE_MISSING,
     STATE_OBSERVED,
 )
 from tadpose.sleap_ingest import WellTrack, parse_well_label
 
-LEFT, RIGHT, CENTRE = (SLEAP_NODES.index(n) for n in ("left_eye", "right_eye", "centre"))
-# Nodes whose short gaps are filled.  Eyes are never interpolated: one
-# missing eye is copied, two missing eyes leave the frame without a frons.
+LEFT, RIGHT, CENTRE, TAIL_BASE = (
+    SLEAP_NODES.index(n) for n in ("left_eye", "right_eye", "centre", "tail1")
+)
+# Nodes whose short gaps are filled linearly.  Eyes are not: a lone eye's
+# partner is placed from the eye spacing (see place_hidden_eye), two missing
+# eyes leave the frame without a frons.
 FILLABLE_NODES: tuple[int, ...] = tuple(
     SLEAP_NODES.index(n) for n in ("centre", "tail1", "tail2", "tail3", "tail_tip")
 )
@@ -77,12 +85,16 @@ class CleanedTrack:
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Orchestration  « gate, then eyes, then gaps »                │
+# │ Orchestration  « gate, then gaps, then eyes »                │
 # └──────────────────────────────────────────────────────────────┘
 
 
 def clean_track(track: WellTrack) -> CleanedTrack:
-    """Apply the stage-1 rules to one well: gates, eye copy, gap filling."""
+    """Apply the stage-1 rules to one well: gates, gap filling, hidden eye.
+
+    Gaps are filled first because the hidden eye is placed in the body frame
+    of the gut and tail base.
+    """
     xy = np.stack(
         [track.pose.xs(c, axis=1, level=1)[list(SLEAP_NODES)].to_numpy(np.float64)
          for c in ("x", "y")],
@@ -94,8 +106,8 @@ def clean_track(track: WellTrack) -> CleanedTrack:
     xy[gated] = np.nan
     state = np.where(np.isnan(xy[..., 0]), STATE_MISSING, STATE_OBSERVED).astype(np.int8)
 
-    copy_hidden_eye(xy, state)
     fill_short_gaps(xy, state, track.meta["is_dropped"].to_numpy(bool))
+    place_hidden_eye(xy, state)
     return CleanedTrack(
         video_stem=track.video_stem,
         well_label=track.well_label,
@@ -150,23 +162,120 @@ def _distance(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 # ┌──────────────────────────────────────────────────────────────┐
-# │ Eyes  « the hidden eye lies below the visible one »          │
+# │ Eyes  « bridge short losses, ramp into side-lying »          │
 # └──────────────────────────────────────────────────────────────┘
 
 
-def copy_hidden_eye(xy: np.ndarray, state: np.ndarray) -> None:
-    """Give a missing eye the visible eye's x/y, in place.
+def place_hidden_eye(xy: np.ndarray, state: np.ndarray) -> None:
+    """Give a missing eye a position wherever the other eye is seen, in place.
 
-    A side-swimming tadpole hides one eye directly below the other, so both
-    project onto the same image point.  Frames with neither eye are left
-    alone: they have no frons.
+    The hidden eye is stored as its offset from the visible eye in the body
+    frame (gut -> tail base, which never depends on the eyes):
+
+    * a stretch of at most ``MAX_EYE_INTERP_FRAMES`` slots with both eyes
+      seen on either side is a short SLEAP loss: the offset is interpolated
+      linearly between the two sides (``STATE_EYE_INTERPOLATED``);
+    * a longer one is the animal lying on its side, the hidden eye directly
+      below the visible one: offset 0 (``STATE_EYE_COPIED``), reached over
+      ``EYE_RAMP_FRAMES`` slots from each seen side (``STATE_EYE_INTERPOLATED``).
+
+    A side without both eyes seen anchors nothing (the eye is copied up to
+    it); stage 2 drops the diff across that jump (:func:`is_eye_switch`).
+    Frames with neither eye are left alone: they have no frons.
     """
-    left_ok = ~np.isnan(xy[:, LEFT, 0])
-    right_ok = ~np.isnan(xy[:, RIGHT, 0])
-    for hidden, visible, rows in ((LEFT, RIGHT, right_ok & ~left_ok),
-                                  (RIGHT, LEFT, left_ok & ~right_ok)):
-        xy[rows, hidden] = xy[rows, visible]
-        state[rows, hidden] = STATE_EYE_COPIED
+    is_seen = ~np.isnan(xy[:, [LEFT, RIGHT], 0])
+    angle = compute_body_frame_angle(xy)
+    lone_runs = [(hidden, visible, find_runs(~is_seen[:, h] & is_seen[:, v]))
+                 for hidden, visible, h, v in ((LEFT, RIGHT, 0, 1), (RIGHT, LEFT, 1, 0))]
+    anchors = compute_eye_offsets(xy, angle, is_seen.all(axis=1))
+    for hidden, visible, (starts, ends) in lone_runs:
+        sign = 1.0 if hidden == LEFT else -1.0       # offsets are stored left - right
+        for start, end in zip(starts, ends):
+            before = sign * anchors[start - 1] if start > 0 else np.full(2, np.nan)
+            after = sign * anchors[end] if end < len(xy) else np.full(2, np.nan)
+            offset, run_state = plan_hidden_eye_run(end - start, before, after)
+            run = slice(start, end)
+            offset[np.isnan(angle[run])] = 0.0
+            run_state[np.isnan(angle[run])] = STATE_EYE_COPIED
+            xy[run, hidden] = xy[run, visible] + rotate(offset, np.nan_to_num(angle[run]))
+            state[run, hidden] = run_state
+
+
+def plan_hidden_eye_run(n: int, before: np.ndarray, after: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Body-frame offsets (hidden - visible) and states for one lone-eye stretch.
+
+    Args:
+        n:      Slots in the stretch.
+        before: Offset on the slot before the stretch; NaN if unknown.
+        after:  Offset on the slot after the stretch; NaN if unknown.
+    """
+    has_before, has_after = np.isfinite(before).all(), np.isfinite(after).all()
+    position = np.arange(1, n + 1)[:, np.newaxis]
+    if has_before and has_after and n <= MAX_EYE_INTERP_FRAMES:
+        weight = position / (n + 1)
+        return (1 - weight) * before + weight * after, np.full(n, STATE_EYE_INTERPOLATED, np.int8)
+
+    offset = np.zeros((n, 2))
+    run_state = np.full(n, STATE_EYE_COPIED, np.int8)
+    ramp = min(EYE_RAMP_FRAMES, n // 2 if has_before and has_after else n)
+    shrink = 1 - position[:ramp] / (ramp + 1)
+    if has_before and ramp:
+        offset[:ramp] = shrink * before
+        run_state[:ramp] = STATE_EYE_INTERPOLATED
+    if has_after and ramp:
+        offset[n - ramp:] = shrink[::-1] * after
+        run_state[n - ramp:] = STATE_EYE_INTERPOLATED
+    return offset, run_state
+
+
+def compute_body_frame_angle(xy: np.ndarray) -> np.ndarray:
+    """Angle of the tail base -> gut line per slot (NaN where either is missing)."""
+    forward = xy[:, CENTRE] - xy[:, TAIL_BASE]
+    return np.arctan2(forward[:, 1], forward[:, 0])
+
+
+def compute_eye_offsets(xy: np.ndarray, angle: np.ndarray, both_seen: np.ndarray) -> np.ndarray:
+    """(slots, 2) left - right eye in the body frame; NaN unless both eyes were seen."""
+    offsets = rotate(xy[:, LEFT] - xy[:, RIGHT], -angle)
+    offsets[~both_seen] = np.nan
+    return offsets
+
+
+def rotate(vectors: np.ndarray, angle: np.ndarray) -> np.ndarray:
+    """Rotate (n, 2) vectors by per-row angles (radians, counter-clockwise)."""
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    return np.column_stack([vectors[:, 0] * cos_a - vectors[:, 1] * sin_a,
+                            vectors[:, 0] * sin_a + vectors[:, 1] * cos_a])
+
+
+def find_eye_switches(eye_state: np.ndarray) -> np.ndarray:
+    """(slots,) True where the diff since the slot before spans an unanchored eye switch.
+
+    Args:
+        eye_state: (slots, 2) stage-1 state codes of the two eyes.
+    """
+    return np.concatenate([[False], is_eye_switch(eye_state[:-1], eye_state[1:])])
+
+
+def is_eye_switch(previous: np.ndarray, current: np.ndarray) -> np.ndarray:
+    """Per pair of (n, 2) eye-state rows: does the frons jump between them?
+
+    Two cases jump by up to half the eye spacing:
+
+    * an eye goes straight between seen and copied (no ramp: the copy of
+      older stage-1 runs, or a slot without a body frame);
+    * an eye goes between seen and placed (copied or interpolated) while
+      the seen side lacks the other eye, so nothing anchored the placement
+      (an eye swap, a lone eye whose partner was never seen).
+    """
+    placed_states = (STATE_EYE_COPIED, STATE_EYE_INTERPOLATED)
+    seen_before, seen_now = previous == STATE_OBSERVED, current == STATE_OBSERVED
+    placed_before, placed_now = np.isin(previous, placed_states), np.isin(current, placed_states)
+    direct = ((seen_before & (current == STATE_EYE_COPIED))
+              | ((previous == STATE_EYE_COPIED) & seen_now)).any(axis=1)
+    hides = (seen_before & placed_now).any(axis=1) & ~seen_before.all(axis=1)
+    reappears = (placed_before & seen_now).any(axis=1) & ~seen_now.all(axis=1)
+    return direct | hides | reappears
 
 
 # ┌──────────────────────────────────────────────────────────────┐
