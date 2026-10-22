@@ -91,6 +91,27 @@ Clustering
 .. automodule:: tadpose.centroid_matching
    :members:
 
+Temporal segmentation
+---------------------
+
+.. automodule:: tadpose.sequences
+   :members:
+
+.. automodule:: tadpose.state_eval
+   :members:
+
+.. automodule:: tadpose.state_flow_plot
+   :members:
+
+.. automodule:: tadpose.moseq_constants
+   :members:
+
+.. automodule:: tadpose.moseq_export
+   :members:
+
+.. automodule:: tadpose.moseq_fit
+   :members:
+
 Cluster validation (choosing k)
 -------------------------------
 

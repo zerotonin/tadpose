@@ -27,6 +27,7 @@ re-randomisation statistics.
    ring_cnn
    sleap_pipeline
    sweep
+   moseq
    api
 
 Indices
