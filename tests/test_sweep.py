@@ -122,6 +122,23 @@ def test_claim_is_exclusive_and_stale_claims_are_reclaimed(queue: sweep.SweepRun
     assert sweep.claim(queue, spec) is not None
 
 
+def test_claim_released_mid_check_does_not_crash(queue: sweep.SweepRun, monkeypatch) -> None:
+    spec = ("vel", 30, 50, 48)
+    taken = sweep.claim(queue, spec)
+    real_stat = Path.stat
+
+    def released_after_first_look(self: Path, *args, **kwargs):
+        result = real_stat(self, *args, **kwargs)
+        if self == taken:
+            self.unlink()
+        return result
+
+    monkeypatch.setattr(Path, "stat", released_after_first_look)
+    assert sweep.claim(queue, spec) is None
+    monkeypatch.undo()
+    assert sweep.claim(queue, spec) == taken
+
+
 def test_done_fits_are_not_claimed(queue: sweep.SweepRun) -> None:
     spec = ("vel", 20, 25, 8)
     _complete(queue, spec)
