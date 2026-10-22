@@ -26,6 +26,8 @@ _COMMANDS: dict[str, str] = {
     "sweep":               "tadpose.sweep",
     "kselect":             "tadpose.kselect",
     "sequences":           "tadpose.sequences",
+    "moseq-export":        "tadpose.moseq_export",
+    "moseq-fit":           "tadpose.moseq_fit",
 }
 
 
