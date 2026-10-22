@@ -10,15 +10,19 @@ from sleap_synthetic import make_track, straight_tadpole_xy
 
 from tadpose.sleap_cleaning import (
     clean_track,
+    find_eye_switches,
     find_fillable_slots,
     find_runs,
     load_interpolated_csv,
     save_interpolated_csv,
 )
 from tadpose.sleap_constants import (
+    EYE_RAMP_FRAMES,
+    MAX_EYE_INTERP_FRAMES,
     MAX_INTERP_FRAMES,
     SLEAP_NODES,
     STATE_EYE_COPIED,
+    STATE_EYE_INTERPOLATED,
     STATE_INTERPOLATED,
     STATE_MISSING,
     STATE_OBSERVED,
@@ -105,11 +109,56 @@ def test_eye_on_the_gut_is_gated(swimming_xy: np.ndarray) -> None:
 # ─────────────────────────────────────────────────────────────────
 
 
-def test_hidden_eye_takes_visible_eye_position(swimming_xy: np.ndarray) -> None:
-    swimming_xy[40:45, RIGHT] = np.nan
+@pytest.fixture
+def turning_xy() -> np.ndarray:
+    """A rigid tadpole swimming a curve: its eye offset only exists in the body frame."""
+    heading = np.linspace(0.0, 2.5, N)
+    frons = np.column_stack([150 + 20 * np.cos(heading), 150 + 20 * np.sin(heading)])
+    return straight_tadpole_xy(frons, heading)
+
+
+def test_short_eye_loss_is_bridged_in_the_body_frame(turning_xy: np.ndarray) -> None:
+    true_right = turning_xy[40:43, RIGHT].copy()
+    turning_xy[40:43, RIGHT] = np.nan
+    cleaned = clean_track(make_track(turning_xy))
+    assert (cleaned.state[40:43, RIGHT] == STATE_EYE_INTERPOLATED).all()
+    np.testing.assert_allclose(cleaned.xy[40:43, RIGHT], true_right, atol=1e-9)
+
+
+def test_long_lone_eye_ramps_onto_the_visible_eye(swimming_xy: np.ndarray) -> None:
+    stretch = slice(30, 30 + MAX_EYE_INTERP_FRAMES + 20)
+    swimming_xy[stretch, LEFT] = np.nan
     cleaned = clean_track(make_track(swimming_xy))
-    assert (cleaned.state[40:45, RIGHT] == STATE_EYE_COPIED).all()
-    np.testing.assert_allclose(cleaned.xy[40:45, RIGHT], swimming_xy[40:45, LEFT])
+    state = cleaned.state[stretch, LEFT]
+    assert (state[:EYE_RAMP_FRAMES] == STATE_EYE_INTERPOLATED).all()
+    assert (state[-EYE_RAMP_FRAMES:] == STATE_EYE_INTERPOLATED).all()
+    assert (state[EYE_RAMP_FRAMES:-EYE_RAMP_FRAMES] == STATE_EYE_COPIED).all()
+    middle = cleaned.xy[stretch][EYE_RAMP_FRAMES:-EYE_RAMP_FRAMES]
+    np.testing.assert_allclose(middle[:, LEFT], middle[:, RIGHT])
+    spacing = np.hypot(*(cleaned.xy[29:61, LEFT] - cleaned.xy[29:61, RIGHT]).T)
+    assert np.abs(np.diff(spacing)).max() <= spacing[0] / (EYE_RAMP_FRAMES + 1) + 1e-9
+
+
+def test_eye_loss_at_the_track_start_is_copied(swimming_xy: np.ndarray) -> None:
+    swimming_xy[0:EYE_RAMP_FRAMES + 3, RIGHT] = np.nan
+    cleaned = clean_track(make_track(swimming_xy))
+    assert (cleaned.state[0:3, RIGHT] == STATE_EYE_COPIED).all()
+    np.testing.assert_allclose(cleaned.xy[0:3, RIGHT], swimming_xy[0:3, LEFT])
+    assert (cleaned.state[3:EYE_RAMP_FRAMES + 3, RIGHT] == STATE_EYE_INTERPOLATED).all()
+
+
+def test_eye_swap_is_an_unanchored_switch(swimming_xy: np.ndarray) -> None:
+    swimming_xy[40:45, LEFT] = np.nan
+    swimming_xy[45:50, RIGHT] = np.nan
+    cleaned = clean_track(make_track(swimming_xy))
+    switches = find_eye_switches(cleaned.state[:, [LEFT, RIGHT]])
+    assert np.flatnonzero(switches).tolist() == [45]
+
+
+def test_direct_copy_is_a_switch_and_an_anchored_ramp_is_not() -> None:
+    o, c, i = STATE_OBSERVED, STATE_EYE_COPIED, STATE_EYE_INTERPOLATED
+    eyes = np.array([[o, o], [c, o], [o, o], [i, o], [c, o], [i, o], [o, o]])
+    assert find_eye_switches(eyes).tolist() == [False, True, True, False, False, False, False]
 
 
 def test_both_eyes_missing_are_never_filled(swimming_xy: np.ndarray) -> None:
