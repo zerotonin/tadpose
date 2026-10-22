@@ -6,9 +6,11 @@
 #  Run on the LOGIN node (it only lists files and calls sbatch):
 #      bash slurm/submit_sleap.sh            # submit
 #      bash slurm/submit_sleap.sh --force    # recompute finished videos too
+#      bash slurm/submit_sleap.sh --sequences  # only step 3, on the bundle
 #
 #  1. sleap_features.sh  array, one CPU task per video: stages 0 -> 2
 #  2. sleap_matrix.sh    after ALL tasks succeed: stage 3 bundle
+#  3. sequences.sh       after the merge: gap-free runs + eye-switch mask
 #
 #  Paths, partition and account come from local_paths.json (profile hpc):
 #  sleap_predictions_root, sleap_geometry_csv, sleap_output_root,
@@ -32,17 +34,30 @@ FORCE_FLAG=""
 if [[ "${1:-}" == "--force" ]]; then FORCE_FLAG="--force"; fi
 export SLEAP_FORCE_FLAG="${FORCE_FLAG}"
 
-N_VIDEOS=$("${TADPOSE_PYTHON_INTERPRETER}" -m tadpose.cli sleap-features --list | wc -l)
-if [[ "${N_VIDEOS}" -eq 0 ]]; then
-    echo "submit_sleap.sh: no SLEAP videos found" >&2
-    exit 1
-fi
-
 LOG_DIR="${TADPOSE_SLEAP_OUTPUT_ROOT}/logs"
 mkdir -p "${LOG_DIR}"
 
 ACCOUNT_FLAG=()
 if [[ -n "${TADPOSE_ACCOUNT:-}" ]]; then ACCOUNT_FLAG=(--account="${TADPOSE_ACCOUNT}"); fi
+
+submit_sequences() {
+    sbatch --parsable \
+        --partition="${TADPOSE_CPU_PARTITION}" ${ACCOUNT_FLAG[@]+"${ACCOUNT_FLAG[@]}"} \
+        --output="${LOG_DIR}/sequences_%j.out" \
+        --error="${LOG_DIR}/sequences_%j.err" \
+        "$@" "${TADPOSE_REPO}/slurm/sequences.sh"
+}
+
+if [[ "${1:-}" == "--sequences" ]]; then
+    echo "Submitted sequences as job $(submit_sequences).  Logs: ${LOG_DIR}"
+    exit 0
+fi
+
+N_VIDEOS=$("${TADPOSE_PYTHON_INTERPRETER}" -m tadpose.cli sleap-features --list | wc -l)
+if [[ "${N_VIDEOS}" -eq 0 ]]; then
+    echo "submit_sleap.sh: no SLEAP videos found" >&2
+    exit 1
+fi
 
 ARRAY_JOB=$(sbatch --parsable \
     --partition="${TADPOSE_CPU_PARTITION}" ${ACCOUNT_FLAG[@]+"${ACCOUNT_FLAG[@]}"} \
@@ -57,7 +72,9 @@ MERGE_JOB=$(sbatch --parsable \
     --output="${LOG_DIR}/sleap_matrix_%j.out" \
     --error="${LOG_DIR}/sleap_matrix_%j.err" \
     "${TADPOSE_REPO}/slurm/sleap_matrix.sh" "${N_VIDEOS}")
+SEQ_JOB=$(submit_sequences --dependency="afterok:${MERGE_JOB}")
 
-echo "Submitted ${N_VIDEOS} video task(s) as array ${ARRAY_JOB}; merge ${MERGE_JOB} runs after all succeed."
+echo "Submitted ${N_VIDEOS} video task(s) as array ${ARRAY_JOB}; merge ${MERGE_JOB} runs after all succeed,"
+echo "then sequences ${SEQ_JOB}."
 echo "Logs: ${LOG_DIR}"
-echo "Watch: squeue -u \$USER   |   sacct -j ${ARRAY_JOB},${MERGE_JOB}"
+echo "Watch: squeue -u \$USER   |   sacct -j ${ARRAY_JOB},${MERGE_JOB},${SEQ_JOB}"

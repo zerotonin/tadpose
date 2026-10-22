@@ -38,6 +38,7 @@ placeholder; override it on submission with
 | `submit_sleap.sh` | SLEAP pipeline: array of per-video tasks + chained merge (run on the login node) | `sbatch` |
 | `sleap_features.sh` | One SLEAP video, stages 0 -> 2 (array task) | `tadpose sleap-features --slurm-array` |
 | `sleap_matrix.sh` | Stage 3 clustering bundle, after all tasks succeed | `tadpose sleap-matrix --expect N` |
+| `sequences.sh` | Gap-free runs + eye-copy switch mask, after the merge | `tadpose sequences` |
 | `submit_sweep.sh` | k-means stability sweep: GPU workers, or the k-selection afterwards (login node) | `sbatch` |
 | `sweep_worker.sh` | One GPU worker: detect the card, pack fits, drain the shared pool | `tadpose sweep work` |
 | `kselect.sh` | k-selection tables + agreement figure for every feature set | `tadpose kselect` |
@@ -81,6 +82,7 @@ rsync -a <local SLEAP_2026_predictions>/ <cluster>:<sleap_2026 folder>/
 # on the login node, in the checkout (sleap branch)
 bash slurm/submit_sleap.sh            # one CPU task per video, then the merge
 bash slurm/submit_sleap.sh --force    # redo videos that already have outputs
+bash slurm/submit_sleap.sh --sequences  # only the runs + eye-switch step
 ```
 
 Per video ~3 min and ~4.5 GB (16 GB requested); the merge needs ~38 GB for
