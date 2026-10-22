@@ -25,6 +25,7 @@ _COMMANDS: dict[str, str] = {
     "sleap-matrix":        "tadpose.sleap_merge",
     "sweep":               "tadpose.sweep",
     "kselect":             "tadpose.kselect",
+    "sequences":           "tadpose.sequences",
 }
 
 
