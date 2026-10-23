@@ -15,6 +15,7 @@ from tadpose.moseq_export import (
     load_fit_set,
     save_fit_set,
 )
+from tadpose.moseq_scale import build_body_scale, compute_body_length
 from tadpose.moseq_fit import (
     _parse_args,
     build_full_model_name,
@@ -128,3 +129,44 @@ def test_full_model_steps_need_their_kappas():
     assert _parse_args(["calibrate", *base, "--ar-kappa", "1e6"]).iters is None
     assert build_full_model_name(4e6, 4e4, 200) == "full_ar4e+06_k4e+04_200it"
     assert build_full_model_name(1e7, 1.2e3, 500) == "full_ar1e+07_k1.2e+03_500it"
+
+
+def _straight_tadpole(n: int, length_scale: float) -> tuple[np.ndarray, np.ndarray]:
+    """Eyes 1 apart at x=0, gut at x=1, tail nodes every 1 along x: body length 5 (x scale)."""
+    xy = np.zeros((n, N_NODES, 2), np.float32)
+    place = {"left_eye": (0, 0.5), "right_eye": (0, -0.5), "centre": (1, 0), "tail1": (2, 0),
+             "tail2": (3, 0), "tail3": (4, 0), "tail_tip": (5, 0)}
+    for name, (x, y) in place.items():
+        xy[:, mc.BODYPARTS.index(name)] = (x * length_scale, y * length_scale)
+    return xy, np.ones((n, N_NODES), np.float32)
+
+
+def test_body_length_uses_fully_observed_frames_only():
+    xy, conf = _straight_tadpole(10, 2.0)
+    conf[3, mc.BODYPARTS.index("tail_tip")] = 0
+    lengths = compute_body_length(xy, conf)
+    assert lengths.shape == (9,) and np.allclose(lengths, 10.0)
+
+
+def test_body_scale_comes_from_reference_recordings():
+    n = mc.MIN_BODY_LENGTH_FRAMES
+    lengths = {"base__A1": np.full(n, 50.0), "drug__A1": np.full(n, 40.0), "base__A2": np.full(n, 100.0)}
+    animals = pd.DataFrame({"recording": list(lengths), "animal": ["p1A1", "p1A1", "p1A2"],
+                            "is_reference": [True, False, True]})
+    table = build_body_scale(lengths, animals).set_index("recording")
+    assert table.scale["drug__A1"] == table.scale["base__A1"] == pytest.approx(mc.REFERENCE_BODY_LENGTH_PX / 50)
+    assert table.scale["base__A2"] == pytest.approx(mc.REFERENCE_BODY_LENGTH_PX / 100)
+    with pytest.raises(ValueError):
+        build_body_scale({"drug__A1": lengths["drug__A1"]}, animals.iloc[[1]])
+
+
+def test_fit_set_applies_the_body_scale(tmp_path):
+    csv = tmp_path / "cropped_v1_interpolated.csv"
+    save_interpolated_csv([_track("A1", 300), _track("B2", 300)], csv)
+    export = export_video(csv, tmp_path / "export")
+    names = [f"cropped_v1{mc.RECORDING_SEP}A1", f"cropped_v1{mc.RECORDING_SEP}B2"]
+    plain, _ = load_fit_set(save_fit_set([export], tmp_path / "a", seed=1, n_frames=100))
+    scaled_path = save_fit_set([export], tmp_path / "b", seed=1, n_frames=100, body_scale=dict(zip(names, (2.0, 0.5))))
+    scaled, _ = load_fit_set(scaled_path)
+    assert np.allclose(scaled[names[0]], 2 * plain[names[0]]) and np.allclose(scaled[names[1]], 0.5 * plain[names[1]])
+    assert pd.read_csv(scaled_path.with_suffix(".csv")).body_scale.tolist() == [2.0, 0.5]
