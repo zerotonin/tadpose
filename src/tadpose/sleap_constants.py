@@ -139,3 +139,27 @@ CLUSTER_FEATURES: tuple[str, ...] = VELOCITY_FEATURES + POSTURE_DIFF_FEATURES
 CHUNK_CSV_PATTERN: re.Pattern[str] = re.compile(
     r"^(?P<stem>.+)_chunk(?P<chunk>\d+)_f(?P<start>\d+)-(?P<end>\d+)_wells\.csv$"
 )
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Pharmacology plates  « condition from the video stem »       │
+# └──────────────────────────────────────────────────────────────┘
+
+# The Sept-2024 videos name their condition in the stem tag
+# (cropped_<yymmdd><tag>_001_<hhmmss>).  The first matching prefix wins, so
+# baseptz is tested before ptz and 4apvpa before 4ap.
+SLEAP_CONDITION_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("cbnodrug", "control"), ("cbptzrange", "PTZ range"),
+    ("baseptz", "PTZ baseline"), ("ptz", "PTZ"),
+    ("base4ap", "4-AP baseline"), ("4apvpa", "4-AP + VPA"), ("4ap", "4-AP"),
+)
+SLEAP_CONDITION_ORDER: tuple[str, ...] = (
+    "control", "PTZ range", "PTZ baseline", "PTZ", "4-AP baseline", "4-AP", "4-AP + VPA",
+)
+# Plate = the tag without its condition: cb, ptz2, ptz3, frogd, froge.
+SLEAP_PLATE_PATTERN: re.Pattern[str] = re.compile(r"^cb|ptz\d+$|frog[a-z]$")
+# Baseline -> drug recordings of one plate (same wells, same animals).  The
+# cb plate's PTZ-range run follows its no-drug run on the same day.
+SLEAP_PAIRED_CONTRASTS: tuple[tuple[str, str], ...] = (
+    ("control", "PTZ range"), ("PTZ baseline", "PTZ"), ("4-AP baseline", "4-AP"),
+    ("4-AP baseline", "4-AP + VPA"), ("4-AP", "4-AP + VPA"),
+)
