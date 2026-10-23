@@ -52,6 +52,24 @@ MAX_WINDOW_DRAWS: int = 20
 WINDOW_NAN_NODE: str = "centre"
 
 # ┌──────────────────────────────────────────────────────────────┐
+# │ Body size  « per-animal normalisation »                      │
+# └──────────────────────────────────────────────────────────────┘
+
+# Optional table next to the fit sets (recording, animal, is_reference);
+# without it the fit sets keep raw pixel sizes.
+ANIMALS_NAME: str = "animals.csv"
+BODY_SCALE_NAME: str = "body_scale.csv"
+# Eye midpoint -> these nodes: the projected body length.
+BODY_LENGTH_CHAIN: tuple[str, ...] = ("centre", "tail1", "tail2", "tail3", "tail_tip")
+# Foreshortening (rolling, pitching, curling) only shortens the body, so an
+# upper percentile of the reference recordings measures size, not posture.
+BODY_LENGTH_PERCENTILE: float = 95.0
+MIN_BODY_LENGTH_FRAMES: int = 500
+# Typical baseline body length (95th percentile, px) at ~7 px/mm: keeps
+# kpms' pixel-scale priors meaningful after scaling.
+REFERENCE_BODY_LENGTH_PX: float = 60.0
+
+# ┌──────────────────────────────────────────────────────────────┐
 # │ Model  « PCA target and the kappa grid »                     │
 # └──────────────────────────────────────────────────────────────┘
 

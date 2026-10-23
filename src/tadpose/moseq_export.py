@@ -9,7 +9,8 @@
 # ║  the AR model never learns our fills as dynamics.  Its stage-1   ║
 # ║  position stays as the starting value: kpms would otherwise draw ║
 # ║  a straight line through side-lying stretches of 1000s of frames ║
-# ║  --draw-fit-set cuts one contiguous window per animal.           ║
+# ║  --draw-fit-set cuts one contiguous window per animal, scaled to ║
+# ║  a common body size when an animals table is present.            ║
 # ╚══════════════════════════════════════════════════════════════════╝
 """``tadpose moseq-export``: keypoints per video, confidence only where observed; fit sets."""
 
@@ -24,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from tadpose import moseq_constants as mc
+from tadpose import moseq_scale
 from tadpose import sleap_config as cfg
 from tadpose.sleap_cleaning import CleanedTrack, load_interpolated_csv
 from tadpose.sleap_constants import STATE_OBSERVED
@@ -45,8 +47,9 @@ def main(argv: list[str] | None = None) -> None:
         exports = sorted((moseq_root / mc.EXPORT_DIR).glob("*.npz"))
         if len(exports) != len(stage1_csvs):
             raise SystemExit(f"{len(exports)} exports for {len(stage1_csvs)} stage-1 videos; export all first")
+        body_scale = build_fit_set_scale(exports, moseq_root)
         for seed in args.draw_fit_set:
-            save_fit_set(exports, moseq_root / mc.FIT_SET_DIR, seed, args.frames_per_animal)
+            save_fit_set(exports, moseq_root / mc.FIT_SET_DIR, seed, args.frames_per_animal, body_scale)
         return
     if args.slurm_array:
         stage1_csvs = [stage1_csvs[int(os.environ["SLURM_ARRAY_TASK_ID"])]]
@@ -131,8 +134,33 @@ def recording_name(video_stem: str, well: str) -> str:
 # └──────────────────────────────────────────────────────────────┘
 
 
-def save_fit_set(exports: list[Path], fit_set_dir: Path, seed: int, n_frames: int) -> Path:
-    """Draw one window per animal from all exports; write npz + windows CSV."""
+def build_fit_set_scale(exports: list[Path], moseq_root: Path) -> dict[str, float] | None:
+    """Body-size factor per recording from ``<moseq>/animals.csv``; None without the table."""
+    animals_path = moseq_root / mc.ANIMALS_NAME
+    if not animals_path.exists():
+        log.warning("no %s: fit sets keep raw pixel sizes", animals_path)
+        return None
+    lengths = {}
+    for export in exports:
+        coords, conf = load_export(export)
+        lengths.update({name: moseq_scale.compute_body_length(coords[name], conf[name]) for name in coords})
+    table = moseq_scale.build_body_scale(lengths, moseq_scale.load_animals(animals_path))
+    out = moseq_root / mc.FIT_SET_DIR / mc.BODY_SCALE_NAME
+    out.parent.mkdir(parents=True, exist_ok=True)
+    table.to_csv(out, index=False, encoding="utf-8")
+    log.info("body scale: %d animals, reference length %.1f-%.1f px -> %.0f px (%s)",
+             table.animal.nunique(), table.body_length.min(), table.body_length.max(),
+             mc.REFERENCE_BODY_LENGTH_PX, out.name)
+    return dict(zip(table.recording, table.scale))
+
+
+def save_fit_set(exports: list[Path], fit_set_dir: Path, seed: int, n_frames: int,
+                 body_scale: dict[str, float] | None = None) -> Path:
+    """Draw one window per animal from all exports; write npz + windows CSV.
+
+    With *body_scale*, each window's coordinates are multiplied by its
+    recording's factor (the windows CSV records it).
+    """
     rng = np.random.default_rng(seed)
     coords, conf, rows = [], [], []
     for export in exports:
@@ -143,12 +171,13 @@ def save_fit_set(exports: list[Path], fit_set_dir: Path, seed: int, n_frames: in
                 log.warning("%s: no window with <= %.0f %% missing %s, animal left out",
                             name, 100 * mc.MAX_WINDOW_NAN_SHARE, mc.WINDOW_NAN_NODE)
                 continue
-            coords.append(video_coords[name][start:start + n_frames])
+            scale = 1.0 if body_scale is None else body_scale[name]
+            coords.append(video_coords[name][start:start + n_frames] * np.float32(scale))
             conf.append(video_conf[name][start:start + n_frames])
-            rows.append((name, start, start + n_frames, *(conf[-1] == 0).mean(axis=0)))
+            rows.append((name, start, start + n_frames, scale, *(conf[-1] == 0).mean(axis=0)))
     fit_set_dir.mkdir(parents=True, exist_ok=True)
     path = fit_set_dir / f"fitset_seed{seed}.npz"
-    windows = pd.DataFrame(rows, columns=["recording", "start_slot", "stop_slot",
+    windows = pd.DataFrame(rows, columns=["recording", "start_slot", "stop_slot", "body_scale",
                                           *(f"missing_{b}" for b in mc.BODYPARTS)])
     np.savez(path, coords=np.stack(coords), conf=np.stack(conf), names=windows.recording.to_numpy(dtype=str))
     windows.to_csv(path.with_suffix(".csv"), index=False, encoding="utf-8")
