@@ -67,6 +67,9 @@ SLEAP pipeline
 .. automodule:: tadpose.sleap_merge
    :members:
 
+.. automodule:: tadpose.sleap_conditions
+   :members:
+
 Clustering
 ----------
 
@@ -107,6 +110,9 @@ Temporal segmentation
    :members:
 
 .. automodule:: tadpose.moseq_export
+   :members:
+
+.. automodule:: tadpose.moseq_scale
    :members:
 
 .. automodule:: tadpose.moseq_fit
@@ -152,6 +158,12 @@ Visualisation
    :members:
 
 .. automodule:: tadpose.analysis.viz_proportions
+   :members:
+
+.. automodule:: tadpose.analysis.sleap_pm_catalogue
+   :members:
+
+.. automodule:: tadpose.analysis.viz_sleap_pms
    :members:
 
 Database and experiment management

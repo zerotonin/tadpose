@@ -58,6 +58,28 @@ Two draws (seeds 0 and 1) give the stability check.  The windows are listed in
 ``fitset_seed<n>.csv`` with the missing share per node.
 
 
+Body size
+---------
+
+keypoint-MoSeq centres and rotates every frame but does not rescale it, so a
+plate of bigger animals reads as a different pose.  Body length (eye midpoint
+to gut to tail tip) varies by about 9 % between animals on a plate and by
+about 20 % between plates, while the pixel scale is the same in every video
+(7.0 px/mm ± 3 %).  :mod:`tadpose.moseq_scale` therefore scales each animal to
+a common body length (``REFERENCE_BODY_LENGTH_PX``) before the fit-set draw.
+
+Size is measured on the animal's reference (drug-free) recordings only, as the
+95th percentile of its body length over fully observed frames.  Under drug the
+same animals stay 5-15 % shorter even at that percentile (rolling, pitching,
+curling); that shortening is posture and must survive the normalisation, so a
+per-recording size would erase part of the drug effect.
+
+The animal of each recording comes from ``<moseq>/animals.csv`` (columns
+``recording, animal, is_reference``), written by a dataset-specific driver.
+Without the table the fit sets keep raw pixel sizes; with it the draw writes
+``fit_sets/body_scale.csv`` and records each window's factor.
+
+
 PCA and the kappa scan
 ----------------------
 
