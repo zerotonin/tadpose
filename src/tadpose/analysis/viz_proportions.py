@@ -137,10 +137,9 @@ def _mini_box(
     lo = max(data.min(), q1 - 1.5 * iqr)
     hi = min(data.max(), q3 + 1.5 * iqr)
 
-    # box
-    box = mpatches.FancyBboxPatch(
+    # box (a padded FancyBboxPatch pads in data units and swamps small values)
+    box = mpatches.Rectangle(
         (centre - width, q1), width * 2, q3 - q1,
-        boxstyle="round,pad=0.01",
         facecolor="white", edgecolor=colour, linewidth=1.0, zorder=4,
     )
     ax.add_patch(box)
