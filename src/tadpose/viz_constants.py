@@ -15,8 +15,11 @@ Central configuration for all TadPose visualisations. Import this module instead
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+from tadpose.sleap_constants import POSTURE_COORDS
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -237,6 +240,100 @@ LANDMARK_COLOURS: dict[str, str] = {
 
 
 # ┌──────────────────────────────────────────────────────────────┐
+# │ Card skeletons  « where the 13 posture values sit »          │
+# └──────────────────────────────────────────────────────────────┘
+
+# A prototype card draws a 13-value body-frame posture (frons at the origin)
+# and its per-frame change.  The skeleton says which value is which, how to
+# join the landmarks and what the scale bar means.  The DLC layout is in
+# pixels; the SLEAP layout follows stage 2 (POSTURE_COORDS, millimetres),
+# with the gut (``centre``) on the body axis in place of the DLC tail base.
+
+
+@dataclass(frozen=True)
+class CardSkeleton:
+    """Landmark layout of the card posture vectors."""
+
+    landmark_cols: dict[str, tuple[int, int | None]]   # name -> (x column, y column or None)
+    midline: tuple[str, ...]                          # drawn head -> tail, frons first
+    colours: dict[str, str]
+    legend: tuple[tuple[str, str], ...]               # (text, landmark) in legend order
+    scale_bar: float                                  # bar length in position units
+    unit: str
+    delta_scale: float = 3.0                          # posture-change arrow gain
+
+
+DLC_CARD_SKELETON = CardSkeleton(
+    landmark_cols={
+        "left_eye": (0, 1), "right_eye": (2, 3), "tail_base": (4, None),
+        "tail_1": (5, 6), "tail_2": (7, 8), "tail_3": (9, 10), "tail_end": (11, 12),
+    },
+    midline=("frons", "tail_base", "tail_1", "tail_2", "tail_3", "tail_end"),
+    colours=LANDMARK_COLOURS,
+    legend=(("left eye", "left_eye"), ("right eye", "right_eye"), ("frons", "frons"),
+            ("tail base", "tail_base"), ("tail 1", "tail_1"), ("tail 2", "tail_2"),
+            ("tail 3", "tail_3"), ("tail tip", "tail_end")),
+    scale_bar=10.0,
+    unit="px",
+)
+
+# SLEAP nodes take the hue of their anatomical DLC counterpart (tail1 is the
+# tail base, tail_tip the tail end); the gut takes the one hue left over.
+SLEAP_LANDMARK_COLOURS: dict[str, str] = {
+    "left_eye":  WONG["bluish_green"],
+    "right_eye": WONG["orange"],
+    "frons":     WONG["black"],
+    "centre":    WONG["blue"],
+    "tail1":     WONG["vermilion"],
+    "tail2":     WONG["reddish_purple"],
+    "tail3":     WONG["sky_blue"],
+    "tail_tip":  WONG["yellow"],
+}
+
+_SLEAP_CARD_NODES: tuple[str, ...] = ("left_eye", "right_eye", "centre", "tail1", "tail2", "tail3", "tail_tip")
+
+SLEAP_CARD_SKELETON = CardSkeleton(
+    landmark_cols={
+        node: (POSTURE_COORDS.index(f"{node}_x"),
+               POSTURE_COORDS.index(f"{node}_y") if f"{node}_y" in POSTURE_COORDS else None)
+        for node in _SLEAP_CARD_NODES
+    },
+    midline=("frons", "centre", "tail1", "tail2", "tail3", "tail_tip"),
+    colours=SLEAP_LANDMARK_COLOURS,
+    legend=(("left eye", "left_eye"), ("right eye", "right_eye"), ("frons", "frons"),
+            ("gut", "centre"), ("tail base", "tail1"), ("tail 2", "tail2"),
+            ("tail 3", "tail3"), ("tail tip", "tail_tip")),
+    scale_bar=1.0,
+    unit="mm",
+)
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ PM movement kinds  « card colour without a behaviour name »  │
+# └──────────────────────────────────────────────────────────────┘
+
+# PMs of a new clustering have no behaviour names yet.  Until they are
+# named, a card is coloured by what its mean kinematics do:
+#   rest      translation < PM_REST_SPEED_MM_S and |yaw| < PM_REST_YAW_RAD_S
+#   turn ±    |yaw| x PM_TURN_LEVER_MM exceeds the translation speed; the
+#             sign is the sign of yaw as stored (image frame), not left/right
+#   forward / backward / sideways   otherwise, by the larger of thrust and
+#             slip and the sign of thrust
+PM_REST_SPEED_MM_S: float = 1.0
+PM_REST_YAW_RAD_S: float = 0.5
+PM_TURN_LEVER_MM: float = 1.0      # frons -> speed point, about the head length
+
+PM_KIND_COLOURS: dict[str, str] = {
+    "rest":     WONG["black"],
+    "forward":  WONG["bluish_green"],
+    "backward": WONG["blue"],
+    "sideways": WONG["sky_blue"],
+    "turn +":   WONG["reddish_purple"],
+    "turn -":   WONG["orange"],
+}
+
+
+# ┌──────────────────────────────────────────────────────────────┐
 # │ Pose overlay  « skeletons drawn on greyscale frames »        │
 # └──────────────────────────────────────────────────────────────┘
 
@@ -283,6 +380,22 @@ GROUP_COLOURS: dict[str, str] = {
     "ptz_10mm":    WONG["reddish_purple"],
     "nd2_5mm":     WONG["bluish_green"],
     "nd2_g20":     WONG["blue"],
+}
+
+
+# ┌──────────────────────────────────────────────────────────────┐
+# │ Pharmacology conditions  « SLEAP plates, baseline vs drug »  │
+# └──────────────────────────────────────────────────────────────┘
+
+# Baselines in greys, drugs in the hues GROUP_COLOURS gives them.
+SLEAP_CONDITION_COLOURS: dict[str, str] = {
+    "control":       "#7F7F7F",
+    "PTZ range":     WONG["reddish_purple"],
+    "PTZ baseline":  "#BDBDBD",
+    "PTZ":           WONG["orange"],
+    "4-AP baseline": WONG["black"],
+    "4-AP":          WONG["vermilion"],
+    "4-AP + VPA":    WONG["sky_blue"],
 }
 
 
