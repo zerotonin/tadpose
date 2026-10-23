@@ -21,6 +21,11 @@ entry.  Each PM entry carries ``positions`` (13), ``dynamics`` (13),
 and the animal-wise duration fields ``dur_mean_ms`` / ``dur_sem_ms``
 (inter-individual mean-of-means ± SEM, from
 :mod:`tadpose.analysis.bout_durations`).
+
+An entry may also carry ``label``, ``kind`` and ``colour``; these replace
+the thesis names (``pm_label`` / ``pm_category``) for clusterings whose PMs
+have no behaviour names yet.  The posture layout comes from a
+:class:`~tadpose.viz_constants.CardSkeleton` (DLC by default, or SLEAP).
 """
 from __future__ import annotations
 
@@ -29,18 +34,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from tadpose import viz_constants as vc
-from tadpose.viz_constants import pm_category, pm_label
+from tadpose.viz_constants import DLC_CARD_SKELETON, CardSkeleton, pm_category, pm_label
 
 if TYPE_CHECKING:                                   # pragma: no cover
     from matplotlib.figure import Figure
 
-# Posture landmark layout: columns into the 13-value position / dynamics
-# vectors.  Frons is the origin; tail_base has no y.
-LANDMARK_COLS: dict[str, tuple[int, int | None]] = {
-    "left_eye": (0, 1), "right_eye": (2, 3), "tail_base": (4, None),
-    "tail_1": (5, 6), "tail_2": (7, 8), "tail_3": (9, 10), "tail_end": (11, 12),
-}
-MIDLINE = ["frons", "tail_base", "tail_1", "tail_2", "tail_3", "tail_end"]
+# DLC posture layout, kept as module names for existing callers.
+LANDMARK_COLS: dict[str, tuple[int, int | None]] = DLC_CARD_SKELETON.landmark_cols
+MIDLINE = list(DLC_CARD_SKELETON.midline)
 
 DELTA_COLOUR = vc.WONG["orange"]            # posture-Δ vectors (distinct from thrust)
 GREY = "0.85"                               # shared pie + kinematics context grey
@@ -52,6 +53,7 @@ SWIM_SCALE_EXCLUDE = {"utb", "head_bobbing", "csc_edge"}
 KINEMATIC_CAP = 1.45                        # max drawn arrow length (axis ±1.6)
 DURATION_LINEAR_WIDTH_MS = 100.0            # asinh linear-region width: the active-behaviour band
 DURATION_TICKS_MS = (0, 100, 1000, 10000)   # asinh duration-axis ticks
+SHEET_HEADER_IN = 0.8                       # title band above a card sheet
 
 GROUP_NAMES: dict[str, str] = {
     "csc": "C-shaped contractions", "csc_edge": "Plate-edge C-starts",
@@ -70,6 +72,7 @@ def compute_scales(
     *,
     exclude_categories: set[str] = SWIM_SCALE_EXCLUDE,
     exclude_from_yaw: bool = False,
+    quantile: float | None = None,
 ) -> dict[str, float]:
     """Derive the global kinematics / duration scales from a catalogue.
 
@@ -79,20 +82,24 @@ def compute_scales(
                             from the translational (thrust/slip) max — they then
                             overshoot the grey context arrows but stay in-panel.
         exclude_from_yaw:   Also drop those groups from the rotational (yaw) max.
+        quantile:           Scale to this quantile of the PMs instead of the
+                            max, for catalogues without named seizure groups
+                            where a few rare, very fast PMs would shrink every
+                            other arrow (they then overshoot, capped).
     """
     keys = [k for k in catalogue if k != "_global"]
-    excl = {int(k) for k in keys if pm_category(int(k)) in exclude_categories}
+    excl = {int(k) for k in keys if entry_category(catalogue, k) in exclude_categories}
     lin_keys = [k for k in keys if int(k) not in excl]
     yaw_keys = lin_keys if exclude_from_yaw else keys
-    thrust_max = max(abs(catalogue[k]["velocity"][0]) for k in lin_keys)
-    slip_max = max(abs(catalogue[k]["velocity"][1]) for k in lin_keys)
-    yaw_max = max(abs(catalogue[k]["velocity"][2]) for k in yaw_keys)
+    lin = np.array([max(abs(catalogue[k]["velocity"][0]), abs(catalogue[k]["velocity"][1])) for k in lin_keys])
+    yaw = np.array([abs(catalogue[k]["velocity"][2]) for k in yaw_keys])
+    reduce = np.max if quantile is None else (lambda a: np.quantile(a, quantile))
     dur_max = catalogue.get("_global", {}).get("dur_max_ms")
     if dur_max is None:
         dur_max = max(catalogue[k].get("dur_mean_ms", 0.0) for k in keys)
     return {
-        "vlin": max(thrust_max, slip_max),     # thrust & slip share one equal axis
-        "yaw_max": yaw_max,
+        "vlin": float(reduce(lin)),            # thrust & slip share one equal axis
+        "yaw_max": float(reduce(yaw)),
         "dur_max": float(dur_max),
     }
 
@@ -103,14 +110,29 @@ def _group_prevalences(catalogue: dict) -> dict[str, float]:
     for key in catalogue:
         if key == "_global":
             continue
-        out[pm_category(int(key))] = out.get(pm_category(int(key)), 0.0) \
-            + catalogue[key].get("prevalence", 0.0)
+        category = entry_category(catalogue, key)
+        out[category] = out.get(category, 0.0) + catalogue[key].get("prevalence", 0.0)
     return out
 
 
-def _landmark_xy(positions: list[float]) -> dict[str, tuple[float, float]]:
+def entry_category(catalogue: dict, key: str) -> str:
+    """The entry's own ``kind`` if it has one, else its thesis group."""
+    return catalogue[key].get("kind") or pm_category(int(key))
+
+
+def entry_label(catalogue: dict, raw_id: int) -> str:
+    return catalogue[str(raw_id)].get("label") or pm_label(raw_id)
+
+
+def entry_colour(catalogue: dict, raw_id: int) -> str:
+    entry = catalogue[str(raw_id)]
+    return entry.get("colour") or vc.BEHAVIOUR_COLOURS[pm_category(raw_id)]
+
+
+def _landmark_xy(positions: list[float],
+                 skeleton: CardSkeleton = DLC_CARD_SKELETON) -> dict[str, tuple[float, float]]:
     out = {"frons": (0.0, 0.0)}
-    for name, (ix, iy) in LANDMARK_COLS.items():
+    for name, (ix, iy) in skeleton.landmark_cols.items():
         out[name] = (positions[ix], 0.0 if iy is None else positions[iy])
     return out
 
@@ -118,22 +140,22 @@ def _landmark_xy(positions: list[float]) -> dict[str, tuple[float, float]]:
 # ┌──────────────────────────────────────────────────────────────┐
 # │ Panels                                                       │
 # └──────────────────────────────────────────────────────────────┘
-def _panel_posture(ax, entry: dict, delta_scale: float = 3.0) -> None:
-    pos = _landmark_xy(entry["positions"])
+def _panel_posture(ax, entry: dict, skeleton: CardSkeleton = DLC_CARD_SKELETON) -> None:
+    pos = _landmark_xy(entry["positions"], skeleton)
     dyn = entry["dynamics"]
-    chain = [pos[n] for n in MIDLINE]
+    chain = [pos[n] for n in skeleton.midline]
     ax.plot([p[0] for p in chain], [p[1] for p in chain], "-", color="0.4", lw=2, zorder=1)
     for eye in ("left_eye", "right_eye"):
         ax.plot([pos["frons"][0], pos[eye][0]], [pos["frons"][1], pos[eye][1]],
                 "-", color="0.4", lw=2, zorder=1)
     for name, (x, y) in pos.items():
-        ax.scatter([x], [y], s=70, color=vc.LANDMARK_COLOURS[name], edgecolors="w", zorder=3)
+        ax.scatter([x], [y], s=70, color=skeleton.colours[name], edgecolors="w", zorder=3)
 
     from matplotlib.patches import FancyArrowPatch
-    for name, (ix, iy) in LANDMARK_COLS.items():
+    for name, (ix, iy) in skeleton.landmark_cols.items():
         x, y = pos[name]
-        dx = dyn[ix] * delta_scale
-        dy = 0.0 if iy is None else dyn[iy] * delta_scale
+        dx = dyn[ix] * skeleton.delta_scale
+        dy = 0.0 if iy is None else dyn[iy] * skeleton.delta_scale
         if abs(dx) + abs(dy) > 1e-6:
             ax.add_patch(FancyArrowPatch((x, y), (x + dx, y + dy), color=DELTA_COLOUR,
                          arrowstyle="-|>", mutation_scale=10, lw=1.5, zorder=2))
@@ -144,12 +166,15 @@ def _panel_posture(ax, entry: dict, delta_scale: float = 3.0) -> None:
     ax.autoscale_view()
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()                              # y inverted: y0 > y1
-    bx = x0 + 0.04 * (x1 - x0)
-    by = y0 - 0.04 * (y0 - y1)
-    ax.plot([bx, bx + 10], [by, by], "k-", lw=2)        # 10 px east
-    ax.plot([bx, bx], [by, by - 10], "k-", lw=2)        # 10 px up (north)
-    ax.text(bx + 5, by + 0.02 * (y0 - y1), "10", ha="center", va="top", fontsize=FONTSZ)
-    ax.text(bx - 0.02 * (x1 - x0), by - 5, "10", ha="right", va="center",
+    bar = skeleton.scale_bar
+    ax.set_ylim(y0 + 1.8 * bar, y1)                     # room below the body, off the eyes
+    bx, by = x0, y0 + 1.5 * bar
+    y0 += 1.8 * bar
+    text = f"{bar:g} {skeleton.unit}"
+    ax.plot([bx, bx + bar], [by, by], "k-", lw=2)       # east
+    ax.plot([bx, bx], [by, by - bar], "k-", lw=2)       # up (north)
+    ax.text(bx + bar / 2, by + 0.02 * (y0 - y1), text, ha="center", va="top", fontsize=FONTSZ)
+    ax.text(bx - 0.02 * (x1 - x0), by - bar / 2, text, ha="right", va="center",
             fontsize=FONTSZ, rotation=90)
 
 
@@ -219,6 +244,17 @@ def _panel_pie(ax, entry: dict, colour: str) -> None:
     ax.set_title(f"{100 * p:.2f}%", fontsize=FONTSZ)
 
 
+def _spaced_ticks(ticks: list[float], x_max: float, min_gap: float = 0.15) -> list[float]:
+    """Drop ticks closer than *min_gap* (axis fraction, asinh scale) to a larger kept one."""
+    def frac(x: float) -> float:
+        return float(np.arcsinh(x / DURATION_LINEAR_WIDTH_MS) / np.arcsinh(x_max / DURATION_LINEAR_WIDTH_MS))
+    kept: list[float] = []
+    for tick in sorted(ticks, reverse=True):
+        if all(abs(frac(tick) - frac(k)) >= min_gap for k in kept):
+            kept.append(tick)
+    return sorted(kept)
+
+
 def _panel_duration(ax, entry: dict, colour: str, dur_max: float) -> None:
     mean = entry.get("dur_mean_ms", 0.0)
     sem = entry.get("dur_sem_ms", 0.0)
@@ -229,7 +265,7 @@ def _panel_duration(ax, entry: dict, colour: str, dur_max: float) -> None:
     ax.set_ylim(-0.5, 0.5)
     ax.set_yticks([])
     ax.set_xlabel("bout duration (ms, asinh)", fontsize=FONTSZ)
-    ticks = [t for t in DURATION_TICKS_MS if t <= dur_max * 1.1]
+    ticks = _spaced_ticks([t for t in DURATION_TICKS_MS if t <= dur_max * 1.1], dur_max * 1.1)
     ax.set_xticks(ticks)
     ax.set_xticklabels([str(t) for t in ticks])
     ax.tick_params(labelsize=FONTSZ)
@@ -248,26 +284,72 @@ def _panel_duration(ax, entry: dict, colour: str, dur_max: float) -> None:
 # │ Cards                                                        │
 # └──────────────────────────────────────────────────────────────┘
 def draw_card(container, catalogue: dict, raw_id: int,
-              scales: dict[str, float] | None = None) -> None:
+              scales: dict[str, float] | None = None,
+              skeleton: CardSkeleton = DLC_CARD_SKELETON) -> None:
     """Draw one prototype card into a Figure or SubFigure."""
     scales = scales or compute_scales(catalogue)
     entry = catalogue[str(raw_id)]
-    colour = vc.BEHAVIOUR_COLOURS[pm_category(raw_id)]
+    colour = entry_colour(catalogue, raw_id)
     gs = container.add_gridspec(3, 5, hspace=0.45, wspace=0.4)
-    _panel_posture(container.add_subplot(gs[0:3, 0:3]), entry)
+    _panel_posture(container.add_subplot(gs[0:3, 0:3]), entry, skeleton)
     _panel_kinematics(container.add_subplot(gs[0:2, 3:5]), entry, scales)
     _panel_pie(container.add_subplot(gs[2, 3]), entry, colour)
     _panel_duration(container.add_subplot(gs[2, 4]), entry, colour, scales["dur_max"])
-    container.suptitle(pm_label(raw_id), fontsize=14, fontweight="bold", x=0.02, ha="left")
+    container.suptitle(entry_label(catalogue, raw_id), fontsize=14, fontweight="bold",
+                       x=0.02, ha="left", color=entry.get("colour", "k"))
 
 
 def plot_prototype_card(catalogue: dict, raw_id: int,
-                        scales: dict[str, float] | None = None) -> "Figure":
+                        scales: dict[str, float] | None = None,
+                        skeleton: CardSkeleton = DLC_CARD_SKELETON) -> "Figure":
     """Build a single-PM card figure."""
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=(9, 5.4))
-    draw_card(fig, catalogue, raw_id, scales)
+    draw_card(fig, catalogue, raw_id, scales, skeleton)
     return fig
+
+
+def plot_card_sheet(
+    catalogue: dict,
+    order: list[int],
+    *,
+    skeleton: CardSkeleton = DLC_CARD_SKELETON,
+    ncols: int = 5,
+    title: str = "",
+    scales: dict[str, float] | None = None,
+) -> "Figure":
+    """All cards in *order* on one sheet, global scales, legend in the last slot.
+
+    Args:
+        catalogue: Prototype catalogue.
+        order:     Raw ids in display order (e.g. by prevalence rank).
+        skeleton:  Posture layout of the catalogue.
+        ncols:     Cards per row.
+        title:     Sheet title.
+        scales:    Shared kinematics / duration scales (default: the maxima).
+    """
+    import matplotlib.pyplot as plt
+
+    scales = scales or compute_scales(catalogue)
+    nrows = (len(order) + 1 + ncols - 1) // ncols
+    fig = plt.figure(figsize=(4.5 * ncols, 3.2 * nrows + SHEET_HEADER_IN))
+    body = _sheet_body(fig, title, 3.2 * nrows)
+    grid = body.add_gridspec(nrows, ncols, hspace=0.18, wspace=0.06)
+    for i, rid in enumerate(order):
+        draw_card(body.add_subfigure(grid[divmod(i, ncols)]), catalogue, rid, scales, skeleton)
+    draw_legend(body.add_subfigure(grid[divmod(len(order), ncols)]), skeleton=skeleton)
+    return fig
+
+
+def _sheet_body(fig, title: str, body_in: float):
+    """Header band with the sheet title above a body subfigure for the cards.
+
+    Subfigures placed on a gridspec ignore its top margin, so the title gets
+    its own subfigure instead of a reserved margin.
+    """
+    header, body = fig.subfigures(2, 1, height_ratios=[SHEET_HEADER_IN, body_in])
+    header.text(0.01, 0.5, title, fontsize=14, fontweight="bold", ha="left", va="center")
+    return body
 
 
 def plot_group_representatives(
@@ -318,20 +400,21 @@ def plot_group_representatives(
         r, c = divmod(i, ncols)
         sub = fig.add_subfigure(grid[r, c])
         draw_card(sub, cat, rid, scales)
-        sub.suptitle(pm_label(rid), fontsize=14, fontweight="bold", x=0.02,
-                     ha="left", color=vc.BEHAVIOUR_COLOURS[pm_category(rid)])
+        sub.suptitle(entry_label(cat, rid), fontsize=14, fontweight="bold", x=0.02,
+                     ha="left", color=entry_colour(cat, rid))
     return fig
 
 
 # ┌──────────────────────────────────────────────────────────────┐
 # │ Kinematics-only cards  « velocity prototypes, no posture »   │
 # └──────────────────────────────────────────────────────────────┘
-def _kinematic_scales(catalogue: dict) -> dict[str, float]:
+def _kinematic_scales(catalogue: dict, quantile: float | None = None) -> dict[str, float]:
     """Velocity / duration scales for the kinematics-only catalogue."""
     keys = [k for k in catalogue if k != "_global"]
-    vlin = max(max(abs(catalogue[k]["velocity"][0]), abs(catalogue[k]["velocity"][1]))
-               for k in keys)
-    yaw_max = max(abs(catalogue[k]["velocity"][2]) for k in keys)
+    lin = np.array([max(abs(catalogue[k]["velocity"][0]), abs(catalogue[k]["velocity"][1])) for k in keys])
+    yaw = np.array([abs(catalogue[k]["velocity"][2]) for k in keys])
+    reduce = np.max if quantile is None else (lambda a: np.quantile(a, quantile))
+    vlin, yaw_max = float(reduce(lin)), float(reduce(yaw))
     dur_max = catalogue.get("_global", {}).get("dur_max_ms") \
         or max(catalogue[k].get("dur_mean_ms", 0.0) for k in keys)
     return {"vlin": vlin, "yaw_max": yaw_max, "dur_max": float(dur_max)}
@@ -342,6 +425,8 @@ def plot_kinematics_card(
     *,
     order: list[int] | None = None,
     ncols: int = 4,
+    title: str | None = None,
+    quantile: float | None = None,
 ) -> "Figure":
     """Supplement card for the kinematics-only (k=8) prototypes.
 
@@ -355,31 +440,36 @@ def plot_kinematics_card(
                    dur_mean_ms, dur_sem_ms}`` plus ``"_global"``.
         order:     Raw-id display order; defaults to the constant.
         ncols:     Cards per row.
+        title:     Sheet title; defaults to the k = 8 one.
+        quantile:  Arrow scale quantile instead of the max (see compute_scales).
+
+    Entries with their own ``label`` / ``kind`` / ``colour`` use those
+    instead of the k = 8 constants.
     """
     import matplotlib.pyplot as plt
 
     order = order or vc.KINEMATIC_K8_ORDER
-    scales = _kinematic_scales(catalogue)
+    scales = _kinematic_scales(catalogue, quantile)
     nrows = (len(order) + ncols - 1) // ncols
-    fig = plt.figure(figsize=(3.4 * ncols, 3.4 * nrows))
-    grid = fig.add_gridspec(nrows, ncols, hspace=0.42, wspace=0.28,
-                            top=0.85, bottom=0.05)
+    fig = plt.figure(figsize=(3.4 * ncols, 3.4 * nrows + SHEET_HEADER_IN))
+    if title is None:
+        title = "Kinematics-only prototypes (k = 8): thrust → saccades → rest"
+    body = _sheet_body(fig, f"{title}  ·  thrust/slip in mm/s, yaw in rad/s  ·  pie = prevalence  "
+                            "·  bar = bout duration ± SEM", 3.4 * nrows)
+    grid = body.add_gridspec(nrows, ncols, hspace=0.42, wspace=0.28)
     for i, rid in enumerate(order):
         entry = catalogue[str(rid)]
-        kind = vc.KINEMATIC_K8_KIND.get(rid, "thrust")
-        colour = vc.KINEMATIC_KIND_COLOURS[kind]
-        sub = fig.add_subfigure(grid[divmod(i, ncols)])
+        kind = entry.get("kind") or vc.KINEMATIC_K8_KIND.get(rid, "thrust")
+        colour = entry.get("colour") or vc.KINEMATIC_KIND_COLOURS[kind]
+        label = entry.get("label") or vc.kinematic_label(rid)
+        sub = body.add_subfigure(grid[divmod(i, ncols)])
         gs = sub.add_gridspec(2, 2, height_ratios=[1.0, 0.5],
                               hspace=0.32, wspace=0.25)
         _panel_kinematics(sub.add_subplot(gs[0, :]), entry, scales, units=("mm/s", "rad/s"))
         _panel_pie(sub.add_subplot(gs[1, 0]), entry, colour)
         _panel_duration(sub.add_subplot(gs[1, 1]), entry, colour, scales["dur_max"])
-        sub.suptitle(f"{vc.kinematic_label(rid)}  ·  {kind}", fontsize=12,
+        sub.suptitle(f"{label}  ·  {kind}", fontsize=12,
                      fontweight="bold", x=0.02, ha="left", color=colour)
-    fig.suptitle("Kinematics-only prototypes (k = 8): thrust → saccades → rest  "
-                 "·  thrust/slip in mm/s, yaw in rad/s  ·  pie = prevalence  "
-                 "·  bar = bout duration ± SEM",
-                 fontsize=13, fontweight="bold", y=0.97)
     return fig
 
 
@@ -466,31 +556,76 @@ def plot_kinematic_posture_map(
 
 
 # ┌──────────────────────────────────────────────────────────────┐
+# │ Coincidence map  « any two labellings, no thesis groups »    │
+# └──────────────────────────────────────────────────────────────┘
+def plot_coincidence_map(
+    cross_tab: "np.ndarray",
+    row_labels: list[str],
+    col_labels: list[str],
+    *,
+    row_colours: list[str] | None = None,
+    col_colours: list[str] | None = None,
+    normalise: str = "column",
+    title: str = "",
+) -> "Figure":
+    """Heat map of how two labellings coincide frame by frame.
+
+    Args:
+        cross_tab:   ``(rows, cols)`` co-occurrence counts, already in display order.
+        row_labels:  Tick labels of the rows.
+        col_labels:  Tick labels of the columns.
+        row_colours: Optional tick colours of the rows.
+        col_colours: Optional tick colours of the columns.
+        normalise:   ``"column"`` shows P(row | column), ``"row"`` P(column | row).
+        title:       Axes title.
+
+    The colour axis is asinh-scaled so weak couplings stay visible.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import AsinhNorm
+
+    mat = np.asarray(cross_tab, dtype=float)
+    axis = 0 if normalise == "column" else 1
+    mat = mat / mat.sum(axis=axis, keepdims=True).clip(min=1e-12)
+    fig, ax = plt.subplots(figsize=(0.32 * mat.shape[1] + 3.0, 0.3 * mat.shape[0] + 2.0))
+    linear_width = max(mat[mat > 0].min(), 1e-4) if (mat > 0).any() else 1e-4
+    im = ax.imshow(mat, aspect="auto", cmap="hot",
+                   norm=AsinhNorm(linear_width=linear_width, vmin=0.0, vmax=1.0))
+    ax.set_yticks(range(mat.shape[0]), row_labels, fontsize=7)
+    ax.set_xticks(range(mat.shape[1]), col_labels, fontsize=7, rotation=90)
+    for ticks, colours in ((ax.get_yticklabels(), row_colours), (ax.get_xticklabels(), col_colours)):
+        for tick, colour in zip(ticks, colours or []):
+            tick.set_color(colour)
+    ax.set_title(title, fontsize=10, fontweight="bold")
+    cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.01)
+    cbar.set_label("P(row | column)" if normalise == "column" else "P(column | row)", fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+# ┌──────────────────────────────────────────────────────────────┐
 # │ Legend  « minimal: landmark colours + arrow key »            │
 # └──────────────────────────────────────────────────────────────┘
-_LANDMARK_KEY = [("left eye", "left_eye"), ("right eye", "right_eye"), ("frons", "frons"),
-                 ("tail base", "tail_base"), ("tail 1", "tail_1"), ("tail 2", "tail_2"),
-                 ("tail 3", "tail_3"), ("tail tip", "tail_end")]
-
-
 def _arrow_key() -> list[tuple[str, str]]:
     return [("posture Δ", DELTA_COLOUR), ("thrust", vc.THRUST_COLOUR),
             ("slip", vc.SLIP_COLOUR), ("yaw", vc.YAW_COLOUR)]
 
 
-def draw_legend(container, wide: bool = False) -> None:
+def draw_legend(container, wide: bool = False,
+                skeleton: CardSkeleton = DLC_CARD_SKELETON) -> None:
     """Draw the minimal legend (landmark colours + arrow types)."""
     from matplotlib.patches import FancyArrowPatch
+    landmark_key = skeleton.legend
     ax = container.add_subplot(111)
     ax.axis("off")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     arrows = _arrow_key()
     if wide:
-        for i, (label, key) in enumerate(_LANDMARK_KEY):
+        for i, (label, key) in enumerate(landmark_key):
             x = 0.02 + (i % 4) * 0.10
             y = 0.66 - (i // 4) * 0.40
-            ax.scatter([x], [y], s=60, color=vc.LANDMARK_COLOURS[key], edgecolors="w")
+            ax.scatter([x], [y], s=60, color=skeleton.colours[key], edgecolors="w")
             ax.text(x + 0.013, y, label, fontsize=FONTSZ, va="center")
         for i, (label, colour) in enumerate(arrows):
             x = 0.55 + i * 0.11
@@ -499,9 +634,9 @@ def draw_legend(container, wide: bool = False) -> None:
                          color=colour, mutation_scale=13, lw=3))
             ax.text(x + 0.062, y, label, fontsize=FONTSZ, va="center")
     else:
-        for i, (label, key) in enumerate(_LANDMARK_KEY):
+        for i, (label, key) in enumerate(landmark_key):
             y = 0.9 - i * 0.11
-            ax.scatter([0.05], [y], s=60, color=vc.LANDMARK_COLOURS[key], edgecolors="w")
+            ax.scatter([0.05], [y], s=60, color=skeleton.colours[key], edgecolors="w")
             ax.text(0.12, y, label, fontsize=FONTSZ, va="center")
         for i, (label, colour) in enumerate(arrows):
             y = 0.82 - i * 0.18
